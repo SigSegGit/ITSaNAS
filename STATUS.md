@@ -119,6 +119,18 @@ fresh `pull_request_target: synchronize` event by pushing a real commit
 sidesteps this entirely, since that path's `if:` condition doesn't depend
 on comment text at all.
 
+**Third result, after both real bugs above were fixed — likely correct
+bot behavior, not a bug**: the action now runs to completion and reports
+"Committers of pull request 5 have to sign the CLA." Every commit in this
+repo so far is authored as `Claude <noreply@anthropic.com>` (this
+session's git identity), which GitHub has no way to associate with the
+`SigSegGit` account, so `allowlist: SigSegGit` (which matches by GitHub
+identity) doesn't match. This is a genuine policy question, not something
+to silently patch around: does the owner want to add this commit identity
+to the allowlist, sign once as a one-time exception, or leave this
+specific check red? It doesn't block merging either way — `cla-check`
+isn't a required status check, only `CI / ci` is.
+
 ## M2 — NAT traversal via a self-hosted relay: DONE (on branch, not yet
 merged)
 
