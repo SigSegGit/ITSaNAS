@@ -3,7 +3,7 @@
 //! bespoke binary protocol, since both clients are thin and this is the
 //! easiest thing for them to consume.
 
-use axum::extract::{Path, State};
+use axum::extract::{DefaultBodyLimit, Path, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::{get, put};
@@ -24,6 +24,12 @@ pub fn router(state: SharedState) -> Router {
             "/files/{name}",
             put(put_file).get(get_file).delete(delete_file),
         )
+        // This is a loopback-only daemon talking to its own trusted
+        // clients (the GUI, the Android app over a tunnel), not a public
+        // upload endpoint — axum's 2 MiB default would silently break any
+        // file bigger than that, which defeats the point of a synced
+        // folder that's supposed to behave like a normal filesystem.
+        .layer(DefaultBodyLimit::disable())
         .with_state(state)
 }
 

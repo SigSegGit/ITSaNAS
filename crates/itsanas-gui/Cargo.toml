@@ -1,0 +1,20 @@
+[package]
+name = "itsanas-gui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Desktop companion app: account setup/unlock and synced-folder status for itsanas-daemon"
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "itsanas-gui"
+path = "src/main.rs"
+
+[dependencies]
+eframe = "0.29"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ureq = { version = "2", features = ["json"] }

@@ -9,24 +9,29 @@
 //! — the poll is what catches vault-side changes made through the HTTP API
 //! directly, which the filesystem watcher can't see.
 //!
-//! A small plaintext state file records the content hash each file had the
-//! last time both sides agreed. That's what tells a one-sided change
-//! (either "edited in the folder" or "PUT through the API") apart from a
-//! genuine two-sided conflict, where the folder side wins — local edits
-//! should behave like editing a normal synced folder, not silently lose
-//! data to a background process.
+//! A small state file records the content hash each file had the last time
+//! both sides agreed. That's what tells a one-sided change (either "edited
+//! in the folder" or "PUT through the API") apart from a genuine two-sided
+//! conflict, where the folder side wins — local edits should behave like
+//! editing a normal synced folder, not silently lose data to a background
+//! process. Like the manifest, it's encrypted at rest with the master key:
+//! it contains file names, which are exactly what the vault's own
+//! encrypted manifest is designed to keep hidden from anyone without the
+//! key, so a plaintext sidecar next to it would defeat that.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc as std_mpsc;
 use std::time::Duration;
 
+use itsanas_crypto::cipher;
 use notify::{RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
 
 use crate::state::SharedState;
 
-const STATE_FILE: &str = "sync_state.json";
+const STATE_FILE: &str = "sync_state.enc";
+const STATE_AAD: &[u8] = b"itsanas-sync-state-v1";
 const POLL_INTERVAL: Duration = Duration::from_secs(2);
 
 #[derive(Serialize, Deserialize, Default, Clone)]
@@ -37,16 +42,18 @@ struct SyncState {
 }
 
 impl SyncState {
-    fn load(path: &Path) -> Self {
+    fn load(path: &Path, master_key: &[u8; 32]) -> Self {
         std::fs::read(path)
             .ok()
-            .and_then(|raw| serde_json::from_slice(&raw).ok())
+            .and_then(|ciphertext| cipher::decrypt(master_key, &ciphertext, STATE_AAD).ok())
+            .and_then(|plaintext| serde_json::from_slice(&plaintext).ok())
             .unwrap_or_default()
     }
 
-    fn save(&self, path: &Path) {
-        if let Ok(raw) = serde_json::to_vec(self) {
-            let _ = std::fs::write(path, raw);
+    fn save(&self, path: &Path, master_key: &[u8; 32]) {
+        if let Ok(plaintext) = serde_json::to_vec(self) {
+            let ciphertext = cipher::encrypt(master_key, &plaintext, STATE_AAD);
+            let _ = std::fs::write(path, ciphertext);
         }
     }
 }
@@ -98,7 +105,7 @@ pub async fn run(state: SharedState, sync_dir: PathBuf) {
 }
 
 async fn reconcile(state: &SharedState, master_key: &[u8; 32], sync_dir: &Path, state_path: &Path) {
-    let mut sync_state = SyncState::load(state_path);
+    let mut sync_state = SyncState::load(state_path, master_key);
 
     let vault_files: BTreeSet<String> = match state.vault.list(master_key) {
         Ok(files) => files.into_iter().map(|f| f.name).collect(),
@@ -186,7 +193,7 @@ async fn reconcile(state: &SharedState, master_key: &[u8; 32], sync_dir: &Path, 
     }
 
     if changed {
-        sync_state.save(state_path);
+        sync_state.save(state_path, master_key);
     }
 }
 
