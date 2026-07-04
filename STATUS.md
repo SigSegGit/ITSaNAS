@@ -33,9 +33,10 @@ Merged via [PR #2](https://github.com/SigSegGit/ITSaNAS/pull/2) into `main`
   writing any code, rather than guessing at an API that changes across
   major versions.
 
-## Receipt mode (fault-injection test mode): DONE (on branch, not yet merged)
+## Receipt mode (fault-injection test mode): DONE (merged)
 
-On branch `claude/receipt-mode`, built on top of merged M0+M1. Implements
+Merged via [PR #3](https://github.com/SigSegGit/ITSaNAS/pull/3) into `main`
+(`97a9bdb`). Implements
 Standard B4's "simulation mode that can force each failure scenario"
 concretely — see `ARCHITECTURE.md`'s new "Test mode & the receipt script"
 section for the full design. Summary:
@@ -71,11 +72,27 @@ All 4 fault points verified handled correctly, plus the clean run —
 - Everything past M1: quotas, daemon, CLI, Android — placeholder crates
   only.
 
+## CLA workflow bugfix: DONE (on branch, not yet merged)
+
+On branch `claude/fix-cla-workflow`. `.github/workflows/cla.yml` failed on
+its first run for every PR so far (#2 and #3), then mysteriously
+"succeeded" on an automatic retry — the retry only looked green because it
+took a different, no-op code path (locking an allowlisted author's PR
+without touching the signature file), not because anything was actually
+fixed. Root cause found in the failed run's logs: the workflow set
+`remote-organization-name`/`remote-repository-name` to point at this same
+repo, which puts `contributor-assistant/github-action` into "remote
+repository" mode — a mode that always requires a `PERSONAL_ACCESS_TOKEN`,
+which was never configured (no `CLA_PAT` secret exists). Since signatures
+were only ever meant to live in this same repo's `cla-signatures` branch,
+not a separate repo, the fix removes that unnecessary remote-repo config
+entirely; the default `GITHUB_TOKEN` (already granted `contents: write` in
+this workflow) is sufficient for same-repo mode. No new secret needed —
+this was a misconfiguration, not a missing credential.
+
 ## Next steps
 
-1. Get the receipt-mode branch reviewed and merged via PR (same
-   admin-bypass-merge pattern as M0/M1, since self-approval isn't
-   possible).
+1. Get the CLA workflow bugfix branch reviewed and merged.
 2. M2: NAT traversal via a self-hosted relay on the Freebox VM (D5), pinned
    so it never falls back to iroh's public relay infrastructure (D4).
    `itsanas-net` will also grow the invite-only join flow (D12) and the
