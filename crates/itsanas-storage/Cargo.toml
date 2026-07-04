@@ -12,6 +12,10 @@ workspace = true
 [dependencies]
 itsanas-chunking = { path = "../itsanas-chunking" }
 thiserror = "1"
+itsanas-testkit = { path = "../itsanas-testkit", optional = true }
+
+[features]
+test-mode = ["dep:itsanas-testkit"]
 
 [dev-dependencies]
 tempfile = "3"

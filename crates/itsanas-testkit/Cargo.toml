@@ -1,0 +1,12 @@
+[package]
+name = "itsanas-testkit"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Fault-injection registry shared by other crates' test-mode features (not for production use)"
+
+[lints]
+workspace = true
+
+[dependencies]

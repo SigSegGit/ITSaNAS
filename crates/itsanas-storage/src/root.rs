@@ -45,6 +45,19 @@ impl StorageRoot {
                 .as_nanos()
         ));
         fs::write(&tmp_path, data)?;
+
+        #[cfg(feature = "test-mode")]
+        if itsanas_testkit::should_fail(itsanas_testkit::FaultPoint::StorageWriteCorruption) {
+            // Simulate the storage backend corrupting bytes during the
+            // write itself (D7). The write-then-verify-readback check
+            // below must catch this exactly like real on-disk corruption.
+            let mut corrupted = fs::read(&tmp_path)?;
+            if let Some(byte) = corrupted.first_mut() {
+                *byte ^= 0xff;
+            }
+            fs::write(&tmp_path, corrupted)?;
+        }
+
         {
             let f = fs::File::open(&tmp_path)?;
             f.sync_all()?;
@@ -67,6 +80,16 @@ impl StorageRoot {
         if !path.exists() {
             return Err(StorageError::NotFound(*id));
         }
+
+        #[cfg(feature = "test-mode")]
+        if itsanas_testkit::should_fail(itsanas_testkit::FaultPoint::StorageGetIoFailure) {
+            // Simulate the storage backend refusing to read a shard that
+            // is actually present (D7's hostile/unreliable backend model).
+            return Err(StorageError::Io(std::io::Error::other(
+                "itsanas-testkit: injected StorageGetIoFailure",
+            )));
+        }
+
         let data = fs::read(&path)?;
         verify_chunk(&data, id)?;
         Ok(data)

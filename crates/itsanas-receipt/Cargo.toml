@@ -1,0 +1,24 @@
+[package]
+name = "itsanas-receipt"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Receipt-runner: drives the two-node LAN scenario under each fault point, then clean, for scripts/receipt.sh (not for production use)"
+publish = false
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "receipt-runner"
+path = "src/main.rs"
+
+[dependencies]
+itsanas-testkit = { path = "../itsanas-testkit" }
+itsanas-crypto = { path = "../itsanas-crypto" }
+itsanas-chunking = { path = "../itsanas-chunking" }
+itsanas-storage = { path = "../itsanas-storage", features = ["test-mode"] }
+itsanas-net = { path = "../itsanas-net", features = ["test-mode"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tempfile = "3"

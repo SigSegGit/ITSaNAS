@@ -1718,6 +1718,7 @@ dependencies = [
  "itsanas-chunking",
  "itsanas-crypto",
  "itsanas-storage",
+ "itsanas-testkit",
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
@@ -1728,6 +1729,19 @@ name = "itsanas-quota"
 version = "0.1.0"
 
 [[package]]
+name = "itsanas-receipt"
+version = "0.1.0"
+dependencies = [
+ "itsanas-chunking",
+ "itsanas-crypto",
+ "itsanas-net",
+ "itsanas-storage",
+ "itsanas-testkit",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "itsanas-repair"
 version = "0.1.0"
 
@@ -1736,9 +1750,14 @@ name = "itsanas-storage"
 version = "0.1.0"
 dependencies = [
  "itsanas-chunking",
+ "itsanas-testkit",
  "tempfile",
  "thiserror 1.0.69",
 ]
+
+[[package]]
+name = "itsanas-testkit"
+version = "0.1.0"
 
 [[package]]
 name = "jni"

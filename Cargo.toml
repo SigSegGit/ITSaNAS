@@ -5,6 +5,8 @@ members = [
     "crates/itsanas-chunking",
     "crates/itsanas-storage",
     "crates/itsanas-net",
+    "crates/itsanas-testkit",
+    "crates/itsanas-receipt",
     "crates/itsanas-repair",
     "crates/itsanas-quota",
     "crates/itsanas-daemon",
