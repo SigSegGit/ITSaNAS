@@ -4,9 +4,27 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Background service tying storage, net, repair, and quota together for ITSaNAS (placeholder)"
+description = "Background service exposing the authenticated local API used by itsanas-gui and the Android client"
 
 [lints]
 workspace = true
 
+[[bin]]
+name = "itsanas-daemon"
+path = "src/main.rs"
+
 [dependencies]
+itsanas-crypto = { path = "../itsanas-crypto" }
+itsanas-chunking = { path = "../itsanas-chunking" }
+itsanas-storage = { path = "../itsanas-storage" }
+axum = "0.8"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "fs"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+notify = "6"
+blake3 = "1"
+
+[dev-dependencies]
+tempfile = "3"
+reqwest = { version = "0.12", default-features = false, features = ["json"] }
