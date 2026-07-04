@@ -15,6 +15,10 @@ itsanas-storage = { path = "../itsanas-storage" }
 iroh = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
 thiserror = "1"
+itsanas-testkit = { path = "../itsanas-testkit", optional = true }
+
+[features]
+test-mode = ["dep:itsanas-testkit", "itsanas-storage/test-mode"]
 
 [dev-dependencies]
 itsanas-crypto = { path = "../itsanas-crypto" }

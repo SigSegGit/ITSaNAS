@@ -12,6 +12,8 @@ crates/
   itsanas-chunking   content addressing, chunking, verify-on-read
   itsanas-storage    local storage root management, shard I/O
   itsanas-net        iroh transport: LAN store/retrieve (M1); relay/NAT traversal is M2
+  itsanas-testkit    fault-injection registry for other crates' test-mode features
+  itsanas-receipt    receipt-runner: drives the scenario under test-mode for scripts/receipt.sh
   itsanas-repair     scrubbing, tamper/corruption detection, re-replication (placeholder)
   itsanas-quota      per-user contributed/usable space accounting (placeholder)
   itsanas-daemon     background service tying the above together (placeholder)
@@ -126,6 +128,80 @@ placeholder crate doc comment for what M2 adds).
   assumption extends to peers serving shards over the network — a
   compromised or buggy peer is just another way a shard's bytes might not
   match its claimed id.
+
+## Test mode & the receipt script
+
+Standard B4 asks for a simulation mode that can force each of the system's
+failure scenarios and prove they're handled, not just that the happy path
+works. This is the concrete mechanism for that, built now while it's cheap
+and extended as later milestones add real failure scenarios (repair,
+quotas, versioning).
+
+**`itsanas-testkit`** is a small leaf crate (no path dependencies, to avoid
+a dependency cycle with the crates it instruments) owning a single
+registry: [`FaultPoint`], an enum of every named point in the system where
+a specific failure can be forced on purpose, plus `should_fail(point)` to
+check whether it's currently requested.
+
+**Compile-time safety property**: other crates depend on `itsanas-testkit`
+*only* behind their own optional `test-mode` Cargo feature (see
+`itsanas-storage`'s and `itsanas-net`'s `Cargo.toml`). A production release
+build never enables that feature, so fault-injection code isn't just
+inert at runtime — it doesn't exist in the compiled binary at all. There
+is no path by which it could ever activate in a real deployment. Each
+call site looks like:
+
+```rust
+#[cfg(feature = "test-mode")]
+if itsanas_testkit::should_fail(itsanas_testkit::FaultPoint::StorageWriteCorruption) {
+    // deliberately corrupt/fail here, then let the *real* surrounding
+    // error-handling code run exactly as it would for a genuine failure
+}
+```
+
+The fault always feeds into the same code path that would run for a real
+failure (e.g. injecting on-disk corruption right before
+`StorageRoot::put`'s existing write-then-verify-readback check, rather than
+special-casing the "test" outcome) — the test proves the real detection
+logic works, not a separate mock of it.
+
+Activation is a single environment variable, `ITSANAS_FAULT_POINT=<name>`,
+read fresh on each check (no caching, so behavior is simple to reason
+about and there's nothing to reset between runs).
+
+**`itsanas-receipt`** (`receipt-runner` binary) runs the M1 two-node LAN
+scenario (encrypt → chunk → push to peer → fetch back → verify → decrypt)
+either cleanly or under one forced fault point, and checks the outcome
+against what that fault point is expected to produce (e.g.
+`StorageWriteCorruption` must surface as `NetError::Remote`, not a panic,
+a hang, or a different error entirely) — "any failure" isn't good enough,
+it has to fail the *right* way.
+
+**`scripts/receipt.sh`** discovers the fault point list from the binary
+itself (`receipt-runner --list-fault-points`) rather than hardcoding it —
+adding a `FaultPoint` variant is enough for the script to pick it up
+automatically — runs the scenario once per point (forcing that failure),
+then once more with nothing forced (the clean run), and writes a
+`receipt.md` summary. It exits non-zero, and `scripts/ci.sh` calls it on
+every commit, so a fault point that stops being handled correctly (or a
+new one nobody wired up) breaks CI rather than shipping quietly.
+
+**Current fault points** (all wired into real M0/M1 code):
+
+| Fault point | Forces | Proves |
+|---|---|---|
+| `storage-write-corruption` | A shard's bytes get corrupted on disk during `put`, before write-then-verify-readback runs | D7: write-then-verify-readback actually catches on-write corruption, not just `fsync`'s say-so |
+| `storage-get-io-failure` | `get` fails as if the backend refused to read a present shard | Storage failures propagate as a clean error across the network instead of panicking |
+| `net-shard-tamper-in-transit` | A shard's bytes get corrupted after being read from storage but before being sent to the peer | D7: the network is not a trust boundary either — the requester's receipt-side verification catches it |
+| `net-peer-disconnect-mid-transfer` | The serving peer drops the connection instead of responding | The requester surfaces this as a transport error rather than hanging |
+
+**Extending this**: as M3 (repair/scrubbing), M4 (quotas), and later
+milestones add real logic to `itsanas-repair`/`itsanas-quota`/
+`itsanas-daemon`, they add their own `FaultPoint` variants (node dies
+mid-upload, permission/ownership change detected, quota exceeded, version
+restore failure — the exact scenarios named in Standard B4) and their own
+`test-mode`-gated call sites, following the same pattern. `receipt.sh`
+needs no changes to pick them up.
 
 ## Dependency justification
 

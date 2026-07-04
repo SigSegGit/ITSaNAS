@@ -157,7 +157,8 @@ async fn handle_connection(
         .map_err(|e| NetError::Transport(e.to_string()))?;
     let request = Request::decode(&request_bytes)?;
 
-    let response = match request {
+    #[cfg_attr(not(feature = "test-mode"), allow(unused_mut))]
+    let mut response = match request {
         Request::Get(id) => match storage.get(&id) {
             Ok(data) => Response::Found(data),
             Err(StorageError::NotFound(_)) => Response::NotFound,
@@ -168,6 +169,26 @@ async fn handle_connection(
             Err(e) => Response::Error(e.to_string()),
         },
     };
+
+    #[cfg(feature = "test-mode")]
+    if itsanas_testkit::should_fail(itsanas_testkit::FaultPoint::NetPeerDisconnectMidTransfer) {
+        // Simulate this peer vanishing before it responds: drop the
+        // connection instead of sending anything back. The requester must
+        // surface this as a transport error rather than hanging.
+        return Ok(());
+    }
+
+    #[cfg(feature = "test-mode")]
+    if let Response::Found(data) = &mut response {
+        if itsanas_testkit::should_fail(itsanas_testkit::FaultPoint::NetShardTamperInTransit) {
+            // Simulate the shard being tampered with in transit, after
+            // being read from (trustworthy) local storage. The requester's
+            // content-address re-verification on receipt must catch this.
+            if let Some(byte) = data.first_mut() {
+                *byte ^= 0xff;
+            }
+        }
+    }
 
     send.write_all(&response.encode())
         .await

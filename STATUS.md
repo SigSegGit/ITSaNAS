@@ -8,14 +8,13 @@ Merged via [PR #1](https://github.com/SigSegGit/ITSaNAS/pull/1) into `main`
 (`113c47e`). Branch protection is active on `main` (PR required, 1
 CODEOWNERS approval, `ci` status check required, force pushes blocked;
 administrators can bypass the review requirement only, so the sole owner
-isn't locked out by GitHub's no-self-approval rule). The CLA Assistant
-GitHub App install is still outstanding (owner action, one-click install,
-not automatable) — `.github/workflows/cla.yml` will start working once
-it's installed and a `CLA_PAT` secret is added.
+isn't locked out by GitHub's no-self-approval rule). CLA Assistant is
+installed and passing (confirmed on PR #2).
 
-## M1 — two-node LAN store/retrieve: DONE (pending review/merge)
+## M1 — two-node LAN store/retrieve: DONE (merged)
 
-On branch `claude/m1-lan-store-retrieve`.
+Merged via [PR #2](https://github.com/SigSegGit/ITSaNAS/pull/2) into `main`
+(`af3933f`).
 
 - `itsanas-storage`: content-addressed local shard store, write-then-verify
   -readback on write, verify-on-read on read (D7). 12 tests, including
@@ -34,21 +33,49 @@ On branch `claude/m1-lan-store-retrieve`.
   writing any code, rather than guessing at an API that changes across
   major versions.
 
-Full `scripts/ci.sh` passes: fmt clean, clippy clean (`-D warnings`), 57
-tests passing across the whole workspace.
+## Receipt mode (fault-injection test mode): DONE (on branch, not yet merged)
+
+On branch `claude/receipt-mode`, built on top of merged M0+M1. Implements
+Standard B4's "simulation mode that can force each failure scenario"
+concretely — see `ARCHITECTURE.md`'s new "Test mode & the receipt script"
+section for the full design. Summary:
+
+- `itsanas-testkit`: `FaultPoint` registry + `should_fail()`. Other crates
+  depend on it only behind their own optional `test-mode` feature, so
+  fault injection is compiled out of production builds entirely, not just
+  disabled at runtime.
+- `itsanas-storage` and `itsanas-net` each instrument real call sites with
+  `#[cfg(feature = "test-mode")]`-gated fault points: `storage-write
+  -corruption`, `storage-get-io-failure`, `net-shard-tamper-in-transit`,
+  `net-peer-disconnect-mid-transfer`.
+- `itsanas-receipt` (`receipt-runner` binary): runs the M1 two-node
+  scenario cleanly or under one forced fault point, and checks the result
+  against the specific error each fault point is expected to produce (not
+  just "did it fail somehow").
+- `scripts/receipt.sh`: discovers the fault point list from the binary
+  itself, runs it once per point plus once clean, writes `receipt.md`,
+  fails loudly on any mismatch. Wired into `scripts/ci.sh`, so it runs on
+  every commit.
+
+All 4 fault points verified handled correctly, plus the clean run —
+`scripts/ci.sh` (which now includes `receipt.sh`) passes end-to-end.
 
 ### Not done yet (explicitly deferred)
 - NAT traversal / self-hosted relay (M2, D4/D5). `itsanas-net`'s `Node` is
   structured so adding this is a new `relay_mode`/bootstrap option, not a
   rewrite.
-- Mirroring, scrubbing, repair (M3).
+- Mirroring, scrubbing, repair (M3) — will add its own `FaultPoint`
+  variants (node dies mid-upload, permission/ownership change, quota
+  exceeded, version restore failure) following the pattern this milestone
+  established.
 - Everything past M1: quotas, daemon, CLI, Android — placeholder crates
   only.
 
 ## Next steps
 
-1. Get the M1 branch reviewed and merged via PR (same admin-bypass-merge
-   pattern as M0, since self-approval isn't possible).
+1. Get the receipt-mode branch reviewed and merged via PR (same
+   admin-bypass-merge pattern as M0/M1, since self-approval isn't
+   possible).
 2. M2: NAT traversal via a self-hosted relay on the Freebox VM (D5), pinned
    so it never falls back to iroh's public relay infrastructure (D4).
    `itsanas-net` will also grow the invite-only join flow (D12) and the
@@ -56,4 +83,5 @@ tests passing across the whole workspace.
 3. M3: mirroring + repair + scrubbing, hardened against hostile storage
    backends (D7) — new logic in `itsanas-repair`, reusing
    `itsanas-storage`'s write-then-verify-readback and
-   `itsanas-chunking`'s verify-on-read.
+   `itsanas-chunking`'s verify-on-read, plus new fault points for the
+   receipt script.

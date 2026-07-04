@@ -21,4 +21,7 @@ cargo build --workspace --all-targets
 echo "==> cargo test"
 cargo test --workspace
 
+echo "==> receipt (fault-injection test mode)"
+./scripts/receipt.sh
+
 echo "==> all checks passed"
