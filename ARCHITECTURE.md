@@ -9,9 +9,9 @@ current: every new crate or dependency should be justified here.
 ```
 crates/
   itsanas-crypto     encryption, key derivation, identities, key wrapping
-  itsanas-chunking    content addressing, chunking, verify-on-read
-  itsanas-storage    local storage root management, shard I/O (placeholder)
-  itsanas-net        iroh transport, discovery, relay (placeholder)
+  itsanas-chunking   content addressing, chunking, verify-on-read
+  itsanas-storage    local storage root management, shard I/O
+  itsanas-net        iroh transport: LAN store/retrieve (M1); relay/NAT traversal is M2
   itsanas-repair     scrubbing, tamper/corruption detection, re-replication (placeholder)
   itsanas-quota      per-user contributed/usable space accounting (placeholder)
   itsanas-daemon     background service tying the above together (placeholder)
@@ -83,6 +83,50 @@ matters) without touching callers.
   the future scrubbing job (D7), so there is one code path for corruption
   detection.
 
+## `itsanas-storage`
+
+Implements the active half of D7 (hostile/unreliable storage backends):
+
+- **Content-addressed layout**: shards live at
+  `<root>/shards/<first-2-hex-chars>/<64-hex-chars>`, sharded by the first
+  byte of their `ChunkId` so no single directory accumulates unbounded
+  entries.
+- **Write-then-verify-readback**: `put` writes to a temp file in the same
+  directory, `sync_all`s it, atomically renames it into place, then
+  **reads it back and re-verifies the hash** before returning success.
+  `fsync`'s return code alone isn't trusted, per D7's note that it can lie
+  over a network filesystem like SMB — only an actual successful read-back
+  is treated as proof the write landed.
+- **Verify-on-read**: `get` re-hashes a shard's bytes against its `ChunkId`
+  on every read, so corruption or tampering that happens *after* a
+  successful write (the scenario D7 is actually worried about — a hostile
+  backend, not just a flaky one) is caught rather than silently returned.
+
+## `itsanas-net`
+
+Implements D4 (iroh transport) for M1's scope only: direct LAN
+connectivity, no relay, no NAT traversal (that's M2/D5, and will be added
+as a `Node::bind` configuration option rather than a rewrite — see the
+placeholder crate doc comment for what M2 adds).
+
+- **Transport**: one `iroh::Endpoint` per `Node`, bound with
+  `RelayMode::Disabled` for M1. `Node` owns a `StorageRoot` and serves it
+  over a custom ALPN (`itsanas/shard/0`).
+- **Wire protocol**: a minimal hand-rolled request/response format over a
+  single bidirectional QUIC stream per request (`Get(ChunkId)` /
+  `Put(ChunkId, bytes)` → `Found(bytes)` / `NotFound` / `Stored` /
+  `Error(String)`). No serde/postcard dependency was added for this — the
+  format is small and stable enough that manual encode/decode is less
+  code than wiring up a serialization framework, and it keeps the wire
+  format an explicit, auditable artifact of this crate rather than an
+  implicit function of a derive macro.
+- **The network is not a trust boundary**: `get_remote` re-verifies a
+  fetched shard's content address before returning it, exactly like
+  `itsanas-storage`'s verify-on-read. D7's "storage backends are hostile"
+  assumption extends to peers serving shards over the network — a
+  compromised or buggy peer is just another way a shard's bytes might not
+  match its claimed id.
+
 ## Dependency justification
 
 | Dependency | Why |
@@ -94,6 +138,8 @@ matters) without touching callers.
 | `rand_core` / `getrandom` | CSPRNG sourcing, no custom RNG code |
 | `zeroize` | Best-effort secret zeroing on drop for key material |
 | `thiserror` | Structured error types without boilerplate |
+| `iroh` | QUIC-native P2P transport with built-in hole punching and relay support (D4) |
+| `tokio` | Async runtime `iroh` and `itsanas-net`'s connection handling require |
 
 Boring, proven components only (Standard B5); nothing here is
 project-invented cryptography.

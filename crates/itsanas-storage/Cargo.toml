@@ -4,9 +4,14 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Local storage root management and shard I/O for ITSaNAS (placeholder)"
+description = "Local storage root management and shard I/O for ITSaNAS"
 
 [lints]
 workspace = true
 
 [dependencies]
+itsanas-chunking = { path = "../itsanas-chunking" }
+thiserror = "1"
+
+[dev-dependencies]
+tempfile = "3"

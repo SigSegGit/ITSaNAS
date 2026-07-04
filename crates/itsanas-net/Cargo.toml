@@ -4,9 +4,18 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "P2P transport, discovery, and relay for ITSaNAS (placeholder)"
+description = "P2P transport, discovery, and relay for ITSaNAS"
 
 [lints]
 workspace = true
 
 [dependencies]
+itsanas-chunking = { path = "../itsanas-chunking" }
+itsanas-storage = { path = "../itsanas-storage" }
+iroh = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+thiserror = "1"
+
+[dev-dependencies]
+itsanas-crypto = { path = "../itsanas-crypto" }
+tempfile = "3"

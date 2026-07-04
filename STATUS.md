@@ -2,51 +2,58 @@
 
 Read this first when resuming work cold.
 
-## Current milestone: M0 — crypto + chunking library
+## M0 — crypto + chunking library: DONE (merged)
 
-**In progress.**
+Merged via [PR #1](https://github.com/SigSegGit/ITSaNAS/pull/1) into `main`
+(`113c47e`). Branch protection is active on `main` (PR required, 1
+CODEOWNERS approval, `ci` status check required, force pushes blocked;
+administrators can bypass the review requirement only, so the sole owner
+isn't locked out by GitHub's no-self-approval rule). The CLA Assistant
+GitHub App install is still outstanding (owner action, one-click install,
+not automatable) — `.github/workflows/cla.yml` will start working once
+it's installed and a `CLA_PAT` secret is added.
 
-### Done
-- Repo governance: `LICENSE` (AGPL-3.0), `README.md`, `ARCHITECTURE.md`,
-  `CONTRIBUTING.md`, `CODEOWNERS`, PR template, CLA workflow config.
-- Cargo workspace scaffolded with `itsanas-crypto`, `itsanas-chunking` (real
-  code) and placeholder crates for `itsanas-storage`, `itsanas-net`,
-  `itsanas-repair`, `itsanas-quota`, `itsanas-daemon`, `itsanas-cli`.
-- `itsanas-crypto`: Argon2id KDF, XChaCha20-Poly1305 encrypt/decrypt, Ed25519
-  + X25519 identity keypair generation, key wrapping. Unit tests including
-  known-answer and tamper-detection cases.
-- `itsanas-chunking`: fixed-size chunking, BLAKE3 content addressing,
-  verify-on-read. Unit tests including a corruption-detection case.
-- `scripts/ci.sh` (fmt check, clippy, build, test) and `scripts/release.sh`
-  (cross-compile), with `.github/workflows/ci.yml` as a thin wrapper that
-  only calls the scripts (Standard/D11: CI provider never holds build logic).
+## M1 — two-node LAN store/retrieve: DONE (pending review/merge)
+
+On branch `claude/m1-lan-store-retrieve`.
+
+- `itsanas-storage`: content-addressed local shard store, write-then-verify
+  -readback on write, verify-on-read on read (D7). 12 tests, including
+  detecting a shard corrupted on disk after being written.
+- `itsanas-net`: `Node` wraps an `iroh::Endpoint` (relay disabled — LAN only
+  for M1) serving a small hand-rolled request/response protocol
+  (`Get`/`Put` a `ChunkId`) over a custom ALPN. 10 unit tests on the wire
+  protocol, plus a 2-node integration test
+  (`tests/lan_store_retrieve.rs`) that runs the *entire* pipeline
+  end-to-end: encrypt a file with `itsanas-crypto` → chunk the ciphertext
+  with `itsanas-chunking` → push shards to a peer over iroh → fetch them
+  back from the peer (simulating local-copy loss) → verify → decrypt →
+  compare to the original plaintext. Also covers the not-found case.
+- Researched the current `iroh` 1.0.1 API directly from its bundled
+  examples and internal test suite (`endpoint_two_direct_only`) before
+  writing any code, rather than guessing at an API that changes across
+  major versions.
+
+Full `scripts/ci.sh` passes: fmt clean, clippy clean (`-D warnings`), 57
+tests passing across the whole workspace.
 
 ### Not done yet (explicitly deferred)
-- Branch protection on `main` — this needs to be turned on once this scaffold
-  PR is reviewed and merged (see note below).
-- CLA Assistant app — config file is in place
-  (`.github/workflows/cla.yml` — actually a stub pointing at the CLA
-  Assistant GitHub App); the app itself still needs to be **installed** by
-  the repo owner (a one-click GitHub App install, not something Claude Code
-  can do). Link is in the PR/handoff message.
-- Everything past M0: storage, net (iroh), repair/scrubbing, quotas, daemon,
-  CLI, Android — all placeholder crates only.
+- NAT traversal / self-hosted relay (M2, D4/D5). `itsanas-net`'s `Node` is
+  structured so adding this is a new `relay_mode`/bootstrap option, not a
+  rewrite.
+- Mirroring, scrubbing, repair (M3).
+- Everything past M1: quotas, daemon, CLI, Android — placeholder crates
+  only.
 
-### Decisions applied this milestone
-- D2 (AGPL-3.0 + CLA): license text sourced from the `spdx-license-list` npm
-  package's bundled AGPL-3.0 full text (verified against the canonical GNU
-  text) rather than typed out by the model, after the initial repo-init
-  LICENSE turned out to be plain GPL-3.0 and was deleted by the owner.
-- D10 crypto stack and D7 content-addressing implemented as specified.
-- Fixed-size chunking chosen over CDC for M0 — see `ARCHITECTURE.md` for the
-  rationale and the upgrade path.
+## Next steps
 
-## Next steps (M1)
-
-1. Get this M0 scaffold reviewed and merged via PR.
-2. Turn on branch protection on `main` (require PR + 1 owner review + green
-   CI, no force pushes) — deferred until after this first merge since the
-   session's push target is a feature branch, not direct-to-main.
-3. Install the CLA Assistant GitHub App (owner action).
-4. Begin M1: two-node LAN store/retrieve using `itsanas-storage` +
-   `itsanas-net` (iroh) on top of the M0 crypto/chunking primitives.
+1. Get the M1 branch reviewed and merged via PR (same admin-bypass-merge
+   pattern as M0, since self-approval isn't possible).
+2. M2: NAT traversal via a self-hosted relay on the Freebox VM (D5), pinned
+   so it never falls back to iroh's public relay infrastructure (D4).
+   `itsanas-net` will also grow the invite-only join flow (D12) and the
+   first-run CGNAT connectivity self-test (D13) here.
+3. M3: mirroring + repair + scrubbing, hardened against hostile storage
+   backends (D7) — new logic in `itsanas-repair`, reusing
+   `itsanas-storage`'s write-then-verify-readback and
+   `itsanas-chunking`'s verify-on-read.
