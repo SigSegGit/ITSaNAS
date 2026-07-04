@@ -1,0 +1,41 @@
+# Example config for the `iroh-relay` server binary (from the `iroh-relay`
+# crate — the same relay implementation itsanas-net's tests run in-process
+# against). This is D5's self-hosted relay, deployed on the Freebox VM.
+#
+# Deployment (owner action — this session has no way to reach the
+# Freebox VM directly):
+#   1. cargo install iroh-relay --features server
+#      (or cross-compile via this repo's scripts/release.sh targets and
+#      copy the binary over)
+#   2. Point relay.example.org's DNS A/AAAA record at the Freebox VM's
+#      public IP, and forward ports 443/tcp+udp to it.
+#   3. Copy this file to /etc/itsanas/relay.toml, edit the hostname below,
+#      and set a real access token via the IROH_RELAY_ACCESS_TOKEN
+#      environment variable (see itsanas-relay.service) — never put the
+#      real token in this file if it's committed anywhere.
+#   4. Install itsanas-relay.service (systemd) and enable it.
+#   5. Point every Node at this relay with:
+#        RelayPolicy::SelfHosted { url: "https://relay.example.org".parse().unwrap(), auth_token: Some(token) }
+#      Never RelayPolicy is ever constructed from iroh's default/staging
+#      relay set (D4) — SelfHosted is the only variant with a URL at all.
+
+enable_relay = true
+
+# Enables QUIC address discovery, which helps peers behind NAT learn their
+# own reachable address (assists hole punching) in addition to relaying.
+enable_quic_addr_discovery = true
+
+[tls]
+hostname = ["relay.example.org"]
+cert_mode = "LetsEncrypt"
+# LetsEncrypt certs (and their ACME account state) are cached here.
+cert_dir = "/var/lib/itsanas-relay/certs"
+
+[access]
+# Restrict relaying to endpoints that present this bearer token, so the
+# relay isn't an open proxy for the wider internet (D12's invite-only
+# principle applied to the relay itself, not just network membership).
+# This placeholder is intentionally not a real secret: the
+# IROH_RELAY_ACCESS_TOKEN environment variable (set in
+# itsanas-relay.service) overrides it entirely at runtime.
+shared_token = ["CHANGE_ME_SET_VIA_IROH_RELAY_ACCESS_TOKEN_ENV_INSTEAD"]

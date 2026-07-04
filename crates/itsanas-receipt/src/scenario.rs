@@ -1,6 +1,6 @@
 use itsanas_chunking::chunk;
 use itsanas_crypto::{cipher, kdf, wrap};
-use itsanas_net::{NetError, Node};
+use itsanas_net::{NetError, Node, RelayPolicy};
 use itsanas_storage::StorageRoot;
 
 const AAD: &[u8] = b"itsanas-receipt-scenario";
@@ -16,8 +16,16 @@ const AAD: &[u8] = b"itsanas-receipt-scenario";
 pub async fn run() -> Result<(), NetError> {
     let owner_dir = tempfile::tempdir().expect("tempdir");
     let mirror_dir = tempfile::tempdir().expect("tempdir");
-    let owner = Node::bind(StorageRoot::open(owner_dir.path()).expect("open storage")).await?;
-    let mirror = Node::bind(StorageRoot::open(mirror_dir.path()).expect("open storage")).await?;
+    let owner = Node::bind(
+        StorageRoot::open(owner_dir.path()).expect("open storage"),
+        RelayPolicy::Disabled,
+    )
+    .await?;
+    let mirror = Node::bind(
+        StorageRoot::open(mirror_dir.path()).expect("open storage"),
+        RelayPolicy::Disabled,
+    )
+    .await?;
 
     let mirror_addr = mirror.addr();
     tokio::spawn(mirror.clone().serve());

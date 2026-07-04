@@ -38,8 +38,8 @@ describing its intended responsibility until its milestone is reached.
 | D9 | Android thin client over the daemon's authenticated API, min API 29 | `itsanas-daemon` (API), Android client (future, separate repo/module) |
 | D10 | Crypto stack: XChaCha20-Poly1305, X25519/Ed25519, Argon2id, BLAKE3 | `itsanas-crypto` (cipher, identities, KDF), `itsanas-chunking` (content addressing) |
 | D11 | No metered dependencies; portable scripts + thin CI wrapper | `scripts/ci.sh`, `scripts/release.sh`, `.github/workflows/ci.yml` |
-| D12 | Open code, private networks (invite-only) | `itsanas-net` (invite/join flow, future), `README.md` |
-| D13 | Connectivity self-test (CGNAT detection) on first run | `itsanas-net`, `itsanas-daemon` |
+| D12 | Open code, private networks (invite-only) | `itsanas-net` (`Invite`), `README.md` |
+| D13 | Connectivity self-test (CGNAT detection) on first run | `itsanas-net` (`ConnectivityReport`) |
 
 ## `itsanas-crypto`
 
@@ -106,14 +106,26 @@ Implements the active half of D7 (hostile/unreliable storage backends):
 
 ## `itsanas-net`
 
-Implements D4 (iroh transport) for M1's scope only: direct LAN
-connectivity, no relay, no NAT traversal (that's M2/D5, and will be added
-as a `Node::bind` configuration option rather than a rewrite — see the
-placeholder crate doc comment for what M2 adds).
+Implements D4 (iroh transport), D5 (self-hosted relay), D12 (invite-only
+join), and D13 (CGNAT self-test).
 
-- **Transport**: one `iroh::Endpoint` per `Node`, bound with
-  `RelayMode::Disabled` for M1. `Node` owns a `StorageRoot` and serves it
-  over a custom ALPN (`itsanas/shard/0`).
+- **Transport**: one `iroh::Endpoint` per `Node`, bound via iroh's
+  `Minimal` preset — deliberately *not* `N0`, which bundles a DNS/pkarr
+  address-lookup service publishing to and resolving from n0.computer's
+  own servers. This project runs its own bootstrap/rendezvous
+  infrastructure (D5) and must not depend on third-party discovery
+  infrastructure any more than it depends on iroh's public relays (D4);
+  `Minimal` sets only the mandatory crypto provider and nothing else.
+  `Node` owns a `StorageRoot` and serves it over a custom ALPN
+  (`itsanas/shard/0`).
+- **`RelayPolicy`** (`Disabled` | `SelfHosted { url, auth_token }`) is
+  passed to `Node::bind` and is the *only* way to configure relaying.
+  There is deliberately no variant that reaches iroh's public relay
+  infrastructure (`RelayMode::Default`/`Staging`) — D4's "never fall back
+  to it" is a property of the type, not a convention callers have to
+  remember. `SelfHosted` builds an `iroh::RelayMap` from a single URL
+  (optionally with a shared bearer token, matching the relay's
+  `access.shared_token` config — see `scripts/relay/`).
 - **Wire protocol**: a minimal hand-rolled request/response format over a
   single bidirectional QUIC stream per request (`Get(ChunkId)` /
   `Put(ChunkId, bytes)` → `Found(bytes)` / `NotFound` / `Stored` /
@@ -128,6 +140,62 @@ placeholder crate doc comment for what M2 adds).
   assumption extends to peers serving shards over the network — a
   compromised or buggy peer is just another way a shard's bytes might not
   match its claimed id.
+- **`ConnectivityReport`** (D13): `Node::connectivity_report` waits for
+  the endpoint to settle (only when a relay is configured —
+  `Endpoint::online()` specifically waits for a relay connection to
+  succeed, so calling it with no relay configured would hang forever) and
+  reports whether any direct address was discovered. No direct address at
+  all is the signature of CGNAT or an equally restrictive NAT/firewall.
+- **`Invite`** (D12): an Ed25519-signed credential committing to a
+  bootstrap peer's `EndpointId` and an expiry, reusing `itsanas-crypto`'s
+  signing primitives (D10) rather than introducing a second signature
+  scheme. It deliberately does not carry that peer's current network
+  address — addresses are looked up fresh at connect time, not baked into
+  a token that would go stale — and it only proves the invite is
+  well-formed and unexpired, not that the issuer is a trusted member;
+  that membership check is a lookup added in M4 (accounts).
+
+### Testing NAT traversal without a real second network
+
+`itsanas-net`'s relay test (`node::tests::
+two_nodes_exchange_a_shard_via_a_self_hosted_relay_only`) runs a real
+`iroh-relay` server in-process (via iroh's `test_utils::run_relay_server`,
+the same server code deployed to the Freebox VM — not a mock) and connects
+to it using an `EndpointAddr` containing *only* a relay URL, no direct IP
+candidates. That's the property that actually matters for NAT traversal:
+relay-only contact information is sufficient to complete a full exchange.
+Both nodes are on localhost, so iroh may additionally upgrade to a direct
+path once the relay has done its job — expected and fine either way.
+
+This test lives as a library unit test, not a `tests/*.rs` integration
+test, and for one specific, contained reason: the in-process test relay
+uses a self-signed certificate, so establishing a connection to it
+requires `iroh::tls::CaTlsConfig::insecure_skip_verify()`. That option is
+never exposed through the public `Node::bind` API — a real deployment
+always has a properly-signed relay certificate (see
+`scripts/relay/relay.example.toml`'s Let's Encrypt config) — so the test
+constructs its own `Endpoint` directly, inside the crate, where it can
+reach `Node`'s private fields without needing a test-only public
+constructor that could be misused outside tests.
+
+A prior version of this test used the default `N0` preset and called
+`Endpoint::online()` unconditionally; both hung indefinitely in this
+project's sandboxed CI-like environment, because `N0` tries to publish to
+and resolve from n0.computer's DNS servers (unreachable here, and not
+something this project should depend on regardless — see `Minimal` above)
+and `online()` waits specifically for a relay connection that, with no
+relay configured, will never come. Both are fixed at the source (`Minimal`
+preset; `connectivity_report` skips the wait when `RelayPolicy::Disabled`
+is in effect) rather than papered over in the test.
+
+### Deploying the real relay
+
+`scripts/relay/` has the actual deployment artifacts for the Freebox VM:
+`relay.example.toml` (the `iroh-relay` server config: Let's Encrypt TLS,
+QUIC address discovery, shared-token access control) and
+`itsanas-relay.service` (a systemd unit). Deploying them to the real
+hardware is an owner action — no Claude Code session has network access to
+the Freebox VM — the same boundary as the CLA Assistant app install.
 
 ## Test mode & the receipt script
 
