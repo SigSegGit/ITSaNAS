@@ -90,9 +90,21 @@ entirely; the default `GITHUB_TOKEN` (already granted `contents: write` in
 this workflow) is sufficient for same-repo mode. No new secret needed —
 this was a misconfiguration, not a missing credential.
 
+**Important gotcha for next time**: this fix's own PR (#4) cannot show a
+green `cla-check`, no matter how correct the fix is. `pull_request_target`
+always executes the workflow file as it exists on the *base* branch
+(`main`), not the PR's branch — deliberately, so a PR can't rewrite its
+own workflow to exfiltrate secrets. Confirmed by fetching `main`'s
+`cla.yml` directly: still the old broken version while this PR was open.
+`cla-check` isn't a required status check, so this doesn't block merging.
+The real test is whatever PR opens *after* this one merges — that's the
+first PR to run against the corrected workflow file.
+
 ## Next steps
 
-1. Get the CLA workflow bugfix branch reviewed and merged.
+1. Get the CLA workflow bugfix branch reviewed and merged. Then confirm on
+   the *next* PR after that (not this one) that `cla-check` genuinely
+   passes rather than taking the lock-only shortcut.
 2. M2: NAT traversal via a self-hosted relay on the Freebox VM (D5), pinned
    so it never falls back to iroh's public relay infrastructure (D4).
    `itsanas-net` will also grow the invite-only join flow (D12) and the
