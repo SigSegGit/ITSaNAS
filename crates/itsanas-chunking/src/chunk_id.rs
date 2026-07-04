@@ -15,6 +15,12 @@ impl ChunkId {
         ChunkId(*blake3::hash(data).as_bytes())
     }
 
+    /// Reconstructs a `ChunkId` from its raw 32-byte BLAKE3 hash, e.g. when
+    /// reading a content-addressed filename back off disk.
+    pub fn from_bytes(bytes: [u8; 32]) -> Self {
+        ChunkId(bytes)
+    }
+
     /// The raw 32-byte BLAKE3 hash.
     pub fn as_bytes(&self) -> &[u8; 32] {
         &self.0
@@ -60,5 +66,12 @@ mod tests {
         assert!(text
             .chars()
             .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
+    }
+
+    #[test]
+    fn from_bytes_round_trips_through_as_bytes() {
+        let id = ChunkId::of(b"round trip me");
+        let rebuilt = ChunkId::from_bytes(*id.as_bytes());
+        assert_eq!(id, rebuilt);
     }
 }

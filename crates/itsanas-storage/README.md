@@ -1,5 +1,5 @@
 # itsanas-storage
 
-Local storage root management and shard I/O. Owns write-then-verify-readback
-and storage-backend health monitoring (D7). Placeholder until M3 — see
-`ARCHITECTURE.md` at the repo root.
+Local, content-addressed shard storage. Treats the storage backend as
+hostile/unreliable (D7): write-then-verify-readback on write, hash
+re-verification on every read. See `ARCHITECTURE.md` at the repo root.
