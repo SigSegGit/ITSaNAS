@@ -1,0 +1,30 @@
+# systemd unit template for the self-hosted relay (D5). Deploy on the
+# Freebox VM — copy to /etc/systemd/system/itsanas-relay.service, edit the
+# paths below to match where the iroh-relay binary and relay.toml (from
+# relay.example.toml) actually live, set a real access token in
+# /etc/itsanas/relay.env, then:
+#   systemctl daemon-reload
+#   systemctl enable --now itsanas-relay
+
+[Unit]
+Description=ITSaNAS self-hosted relay (D5)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/iroh-relay --config-path /etc/itsanas/relay.toml
+EnvironmentFile=/etc/itsanas/relay.env
+DynamicUser=yes
+StateDirectory=itsanas-relay
+# Matches relay.example.toml's tls.cert_dir; keep them in sync.
+BindPaths=/var/lib/itsanas-relay/certs
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

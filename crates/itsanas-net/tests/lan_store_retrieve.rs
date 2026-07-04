@@ -9,19 +9,25 @@
 
 use itsanas_chunking::chunk;
 use itsanas_crypto::{cipher, kdf, wrap};
-use itsanas_net::{NetError, Node};
+use itsanas_net::{NetError, Node, RelayPolicy};
 use itsanas_storage::StorageRoot;
 
 #[tokio::test]
 async fn two_node_lan_put_and_recover() {
     let owner_dir = tempfile::tempdir().unwrap();
     let mirror_dir = tempfile::tempdir().unwrap();
-    let owner = Node::bind(StorageRoot::open(owner_dir.path()).unwrap())
-        .await
-        .unwrap();
-    let mirror = Node::bind(StorageRoot::open(mirror_dir.path()).unwrap())
-        .await
-        .unwrap();
+    let owner = Node::bind(
+        StorageRoot::open(owner_dir.path()).unwrap(),
+        RelayPolicy::Disabled,
+    )
+    .await
+    .unwrap();
+    let mirror = Node::bind(
+        StorageRoot::open(mirror_dir.path()).unwrap(),
+        RelayPolicy::Disabled,
+    )
+    .await
+    .unwrap();
 
     let mirror_addr = mirror.addr();
     tokio::spawn(mirror.clone().serve());
@@ -69,16 +75,22 @@ async fn two_node_lan_put_and_recover() {
 #[tokio::test]
 async fn get_remote_of_unknown_chunk_returns_not_found() {
     let dir = tempfile::tempdir().unwrap();
-    let peer = Node::bind(StorageRoot::open(dir.path()).unwrap())
-        .await
-        .unwrap();
+    let peer = Node::bind(
+        StorageRoot::open(dir.path()).unwrap(),
+        RelayPolicy::Disabled,
+    )
+    .await
+    .unwrap();
     let peer_addr = peer.addr();
     tokio::spawn(peer.clone().serve());
 
     let requester_dir = tempfile::tempdir().unwrap();
-    let requester = Node::bind(StorageRoot::open(requester_dir.path()).unwrap())
-        .await
-        .unwrap();
+    let requester = Node::bind(
+        StorageRoot::open(requester_dir.path()).unwrap(),
+        RelayPolicy::Disabled,
+    )
+    .await
+    .unwrap();
 
     let unknown_id = itsanas_chunking::ChunkId::of(b"never stored anywhere");
     let result = requester.get_remote(peer_addr, &unknown_id).await;

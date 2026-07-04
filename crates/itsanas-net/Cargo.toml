@@ -12,7 +12,9 @@ workspace = true
 [dependencies]
 itsanas-chunking = { path = "../itsanas-chunking" }
 itsanas-storage = { path = "../itsanas-storage" }
+itsanas-crypto = { path = "../itsanas-crypto" }
 iroh = "1"
+ed25519-dalek = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
 thiserror = "1"
 itsanas-testkit = { path = "../itsanas-testkit", optional = true }
@@ -21,5 +23,5 @@ itsanas-testkit = { path = "../itsanas-testkit", optional = true }
 test-mode = ["dep:itsanas-testkit", "itsanas-storage/test-mode"]
 
 [dev-dependencies]
-itsanas-crypto = { path = "../itsanas-crypto" }
 tempfile = "3"
+iroh = { version = "1", features = ["test-utils"] }
