@@ -1,0 +1,12 @@
+[package]
+name = "itsanas-daemon"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Background service tying storage, net, repair, and quota together for ITSaNAS (placeholder)"
+
+[lints]
+workspace = true
+
+[dependencies]

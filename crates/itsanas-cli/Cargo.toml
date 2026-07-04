@@ -1,0 +1,12 @@
+[package]
+name = "itsanas-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Command-line client for ITSaNAS (placeholder)"
+
+[lints]
+workspace = true
+
+[dependencies]

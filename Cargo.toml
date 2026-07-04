@@ -1,0 +1,21 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/itsanas-crypto",
+    "crates/itsanas-chunking",
+    "crates/itsanas-storage",
+    "crates/itsanas-net",
+    "crates/itsanas-repair",
+    "crates/itsanas-quota",
+    "crates/itsanas-daemon",
+    "crates/itsanas-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-only"
+repository = "https://github.com/SigSegGit/ITSaNAS"
+
+[workspace.lints.clippy]
+all = "warn"
