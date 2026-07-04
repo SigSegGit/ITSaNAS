@@ -1,0 +1,12 @@
+[package]
+name = "itsanas-storage"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Local storage root management and shard I/O for ITSaNAS (placeholder)"
+
+[lints]
+workspace = true
+
+[dependencies]
