@@ -177,12 +177,65 @@ join), and D13 (CGNAT self-test) — see `ARCHITECTURE.md`'s expanded
 24 new/changed tests across `itsanas-net`, all passing, `scripts/ci.sh`
 green end-to-end.
 
+## itsanas-daemon, itsanas-gui, Windows installer: DONE (on branch
+`claude/daemon-and-clients`, not yet merged)
+
+Deliberate reprioritization at the owner's direction: rather than
+continuing straight to M3 (mirroring/repair) after M2, this branch builds
+the local daemon + desktop client stack M3's own design depends on anyway
+(D9), since tangible, runnable Windows/Android clients were asked for
+explicitly. M3 is deferred, not abandoned — see "Next steps" below.
+
+- **`itsanas-daemon`**: single-user password-derived account (D10, Argon2id
+  + a verification tag so a wrong password fails cleanly), an encrypted
+  per-file vault on top of `itsanas-storage`/`itsanas-chunking` (manifest
+  encrypted at rest — file names included), and a local-only (`127.0.0.1`)
+  HTTP API: setup/unlock/lock, list/get/put/delete files.
+- **Folder sync engine** (`sync.rs`): watches a real local folder
+  (`notify` crate) and mirrors it bidirectionally with the vault, plus a
+  poll fallback for API-driven changes the watcher can't see — this is
+  what makes drag-and-drop/copy/paste/open through the OS work
+  transparently, the explicit bar the owner set ("like Google Drive").
+  Deliberately a mirrored folder, not a FUSE/virtual-filesystem mount —
+  matches the project's own non-goals list.
+- **`itsanas-gui`**: `eframe`/`egui` desktop companion app — account
+  setup/unlock, shows the synced folder location, live file list. Launches
+  the daemon itself if it isn't already running.
+- **Windows installer** (`packaging/windows/installer.nsi` +
+  `scripts/package-windows-installer.sh`): single-click, no admin/UAC
+  prompt (per-user install under `%LOCALAPPDATA%`), Start Menu + Desktop
+  shortcuts, launch-at-login. Built and verified to produce a valid PE
+  installer in this environment (can't be run interactively here — no
+  Windows machine in this sandbox — but both bundled binaries
+  cross-compile and the installer builds cleanly via `makensis`).
+- **Android client**: not started this round — Android SDK downloads are
+  blocked by this sandbox's network egress policy (`dl.google.com`
+  returns 403), so any Kotlin/Compose source written here would be
+  unverifiable. Flagging this explicitly rather than writing unverified
+  code and calling it done.
+- **Real-life testing** (`TESTING.md`): live multi-account isolation,
+  stolen-vault-data, at-rest-encryption, and large-binary-file-integrity
+  testing against running daemon instances (not just unit tests). Found
+  and fixed two real bugs this way:
+  - the sync engine's state sidecar was plaintext JSON recording file
+    names, leaking exactly what the encrypted manifest is designed to
+    hide — now encrypted with the master key like the manifest is.
+  - axum's default 2 MiB body limit silently rejected any upload bigger
+    than that — disabled for this loopback-only API.
+- Also switched default data/sync directories from CWD-relative paths to
+  proper per-user locations (`dirs` crate) — a real installed app has no
+  reliable working directory, and `Program Files` isn't user-writable.
+
 ## Next steps
 
 1. Get the M2 branch reviewed and merged. Confirm on this PR (opened after
    PR #4 merged) that `cla-check` genuinely passes now, not via the
    lock-only shortcut.
-2. M3: mirroring + repair + scrubbing, hardened against hostile storage
+2. Get `claude/daemon-and-clients` reviewed and merged.
+3. Android client (M5, moved earlier at the owner's request): needs a real
+   Android SDK / emulator or physical device to write and verify against —
+   blocked in this sandbox specifically, not a design blocker.
+4. M3: mirroring + repair + scrubbing, hardened against hostile storage
    backends (D7) — new logic in `itsanas-repair`, reusing
    `itsanas-storage`'s write-then-verify-readback and
    `itsanas-chunking`'s verify-on-read, plus new fault points for the

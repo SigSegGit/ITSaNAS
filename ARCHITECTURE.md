@@ -16,7 +16,8 @@ crates/
   itsanas-receipt    receipt-runner: drives the scenario under test-mode for scripts/receipt.sh
   itsanas-repair     scrubbing, tamper/corruption detection, re-replication (placeholder)
   itsanas-quota      per-user contributed/usable space accounting (placeholder)
-  itsanas-daemon     background service tying the above together (placeholder)
+  itsanas-daemon     local HTTP API: account, encrypted vault, folder sync engine
+  itsanas-gui        desktop companion app (account setup/unlock, synced folder status)
   itsanas-cli        command-line client (placeholder)
 ```
 
@@ -197,6 +198,101 @@ QUIC address discovery, shared-token access control) and
 hardware is an owner action — no Claude Code session has network access to
 the Freebox VM — the same boundary as the CLA Assistant app install.
 
+## `itsanas-daemon`
+
+Implements D9 (the authenticated local API both `itsanas-gui` and the
+Android client talk to) on top of `itsanas-crypto`, `itsanas-chunking`,
+and `itsanas-storage`. Single-user, single-machine trust boundary for
+now — multi-device accounts are M4.
+
+- **Account** (`account.rs`): a password derives the vault's master key
+  via `itsanas-crypto`'s Argon2id KDF (D10). There's no username or
+  server-side account — just a random salt and an encrypted verification
+  tag stored in `account.json`, so a wrong password is rejected cleanly
+  (`WrongPassword`) rather than silently producing a useless key. Locking
+  discards the derived key from memory (`AppState`'s `RwLock<Option<[u8;
+  32]>>`); nothing in the vault is reachable until unlocked again.
+- **Vault** (`vault.rs`): a named-file view on top of `itsanas-storage`'s
+  content-addressed shards. Each file gets its own randomly generated
+  key, wrapped by the master key (D10's key-wrapping design) — the
+  master key never directly touches bulk data. The file→chunk-list
+  mapping (the *manifest*) is itself encrypted at rest with the master
+  key, so a locked vault reveals nothing at all on disk, not even file
+  names.
+- **HTTP API** (`http.rs`): axum router, bound to `127.0.0.1` only (see
+  `main.rs`) — a local daemon for this machine's own clients, never a
+  public server. `GET /status`, `POST /account/{setup,unlock,lock}`,
+  `GET /files`, `PUT`/`GET`/`DELETE /files/{name}` (raw bytes, not
+  multipart — both clients are thin enough that this is the simplest
+  thing for them to consume). The default 2 MiB per-request body limit
+  axum ships with is disabled here: it's a loopback API for a sync
+  client, not a public upload endpoint, and silently rejecting anything
+  over 2 MiB would defeat the point of a folder that's supposed to
+  behave like a normal filesystem.
+- **Folder sync engine** (`sync.rs`): the actual "make it feel like
+  Google Drive" mechanism. Rather than requiring manual upload/download
+  through a GUI, the daemon watches a real local folder (`notify` crate)
+  and mirrors it bidirectionally with the vault, so the OS's own file
+  manager — drag-and-drop, copy/paste, open, move, delete — just works.
+  This is a deliberately lighter-weight design than a virtual
+  filesystem/FUSE mount (explicitly a P2/future non-goal): a plain
+  mirrored folder plus a watcher and a poll fallback (to catch
+  API-driven changes the watcher can't see) covers the same user-facing
+  behavior with far less platform-specific complexity.
+  - A small state file (`sync_state.enc`) tracks the content hash each
+    file had the last time the folder and the vault agreed, which is
+    what distinguishes a one-sided change (edited locally, or `PUT`
+    through the API) from a genuine two-sided conflict — resolved in
+    favor of the folder, since it should behave like a normal editable
+    folder rather than silently losing local edits. **This state file is
+    encrypted at rest with the master key, the same way the manifest
+    is** — an earlier version stored it as plaintext JSON, which leaked
+    file names (as map keys) even while the vault was locked; caught by
+    live multi-account testing (see `TESTING.md`) and fixed by encrypting
+    it identically to the manifest.
+  - Locking the vault stops reconciliation entirely (the sync loop's
+    `state.master_key().await` fails and it skips that tick) — a locked
+    vault materializes nothing new to disk and uploads nothing, matching
+    the "locked means locked" expectation the HTTP API already enforces.
+- **Default directories**: `ITSANAS_DATA_DIR` defaults to a proper
+  per-user app-data directory (`%APPDATA%\itsanas` / `~/.config/itsanas`
+  / `~/Library/Application Support/itsanas`, via the `dirs` crate) and
+  `ITSANAS_SYNC_DIR` defaults to `~/ITSaNAS`, rather than paths relative
+  to the current working directory. A Start-Menu/Desktop-launched exe
+  has no reliable working directory, and installing to `Program Files`
+  (not user-writable without elevation) would have made CWD-relative
+  paths actively wrong, not just fragile.
+
+## `itsanas-gui`
+
+The desktop companion app: an `eframe`/`egui` window for account
+setup/unlock, showing where the synced folder is, and a live file list —
+deliberately *not* a manual upload/download tool, since that's the whole
+job the sync engine in `itsanas-daemon` already does. On startup it
+checks whether a daemon is already listening on `127.0.0.1:4279` and, if
+not, spawns `itsanas-daemon` itself (next to its own binary, falling back
+to `PATH`), so double-clicking the GUI is a complete entry point rather
+than requiring the daemon to be started separately.
+
+**Windows packaging** (`packaging/windows/installer.nsi`,
+`scripts/package-windows-installer.sh`): an NSIS installer, built by
+cross-compiling both binaries via `x86_64-pc-windows-gnu`
+(`mingw-w64`). Installs per-user under
+`%LOCALAPPDATA%\Programs\ITSaNAS` — no admin/UAC prompt, the same
+approach Dropbox/Slack/VS Code installers use — with Start Menu and
+Desktop shortcuts and a login-time autostart entry. The uninstaller
+removes the app itself but deliberately leaves the vault
+(`%APPDATA%\itsanas`) and the synced folder (`~/ITSaNAS`) untouched,
+matching what any real sync client's uninstaller does.
+
+`itsanas-gui` isn't built for `aarch64` in `scripts/release.sh` — a
+Raspberry Pi–class NAS box is headless, so there's no desktop to put a
+GUI on; `itsanas-daemon` (which runs everywhere) is what actually matters
+there.
+
+See `INSTALL.md` for the end-user-facing installation and account/key
+management instructions.
+
 ## Test mode & the receipt script
 
 Standard B4 asks for a simulation mode that can force each of the system's
@@ -284,6 +380,11 @@ needs no changes to pick them up.
 | `thiserror` | Structured error types without boilerplate |
 | `iroh` | QUIC-native P2P transport with built-in hole punching and relay support (D4) |
 | `tokio` | Async runtime `iroh` and `itsanas-net`'s connection handling require |
+| `axum` | `itsanas-daemon`'s local HTTP API — small, well-maintained, integrates directly with `tokio` |
+| `notify` | Cross-platform filesystem watcher backing the folder sync engine |
+| `dirs` | Correct per-OS app-data/home directory resolution instead of hand-rolled `%APPDATA%`/`$HOME` logic |
+| `eframe`/`egui` | Immediate-mode Rust GUI, cross-compiles cleanly to Windows via `mingw-w64` — avoids a second language/toolchain for the desktop client |
+| `ureq` | Small synchronous HTTP client for `itsanas-gui` talking to the loopback daemon API — no async runtime needed in the GUI process |
 
 Boring, proven components only (Standard B5); nothing here is
 project-invented cryptography.

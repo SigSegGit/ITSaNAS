@@ -10,11 +10,20 @@ Every user keeps a full local copy of their own data: the network provides
 off-site redundancy and multi-device access, not primary storage. Day-to-day
 file access is local-first.
 
+## Installing
+
+See [`INSTALL.md`](INSTALL.md) for the single-click Windows installer, and
+manual build/run instructions for Linux/macOS, including account setup and
+where your key and your synced folder live.
+
 ## Status
 
-Early prototype (M0: core crypto + chunking library). See
-[`STATUS.md`](STATUS.md) for the current milestone and next steps, and
-[`ARCHITECTURE.md`](ARCHITECTURE.md) for the design.
+Core crypto/chunking/storage/networking library, plus a working local
+daemon + encrypted vault + folder-sync engine and desktop apps
+(`itsanas-daemon`, `itsanas-gui`). See [`STATUS.md`](STATUS.md) for the
+current milestone and next steps, [`ARCHITECTURE.md`](ARCHITECTURE.md) for
+the design, and [`TESTING.md`](TESTING.md) for real-life
+encryption/isolation/file-transfer testing results.
 
 ## Open code, private networks
 
