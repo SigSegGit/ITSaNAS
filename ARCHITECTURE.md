@@ -14,7 +14,7 @@ crates/
   itsanas-net        iroh transport: LAN store/retrieve (M1); relay/NAT traversal is M2
   itsanas-testkit    fault-injection registry for other crates' test-mode features
   itsanas-receipt    receipt-runner: drives the scenario under test-mode for scripts/receipt.sh
-  itsanas-repair     scrubbing, tamper/corruption detection, re-replication (placeholder)
+  itsanas-repair     mirroring (M3), scrubbing, and repair; Reed-Solomon erasure coding is M7
   itsanas-quota      per-user contributed/usable space accounting (placeholder)
   itsanas-daemon     local HTTP API: account, encrypted vault, folder sync engine
   itsanas-gui        desktop companion app (account setup/unlock, synced folder status)
@@ -197,6 +197,51 @@ QUIC address discovery, shared-token access control) and
 `itsanas-relay.service` (a systemd unit). Deploying them to the real
 hardware is an owner action — no Claude Code session has network access to
 the Freebox VM — the same boundary as the CLA Assistant app install.
+
+## `itsanas-repair`
+
+M3: implements D6's mirroring policy (encrypted full replication to every
+other node below the N≥4 threshold — Reed–Solomon erasure coding at 4+
+nodes is M7, post-prototype) and the active half of D7 (scrubbing +
+repair, on top of `itsanas-net`'s `Node` and `itsanas-storage`'s
+already-verifying `get`/`put`).
+
+- **`scrub`**: re-verifies a given set of `ChunkId`s against a
+  `StorageRoot`, classifying each `Healthy`/`Corrupt`/`Missing`. This is
+  D7's *active* detection — the storage backend is assumed hostile or
+  unreliable, so a shard that was fine when written can still be
+  tampered with or degrade later; scrubbing is the periodic check that
+  catches that instead of waiting for a read that happens to need it.
+  Reuses `StorageRoot::get`'s existing verify-on-read rather than
+  re-implementing hash checking — a read failure for any reason other
+  than "not found" is treated as unhealthy.
+- **`MirrorSet` / `mirror_shard`**: a plain list of peer addresses a node
+  mirrors its shards to (D6's "who" is a caller decision — membership
+  isn't this crate's concern) and a function that pushes one shard to
+  every peer in the set, tolerating individual failures (D7 applies to
+  mirror peers exactly like any other storage backend: one bad or
+  unreachable mirror shouldn't block replicating to the rest).
+- **`repair`**: restores a shard into a node's own local storage by
+  trying each mirror in the set in turn until one has a valid copy.
+  `Node::get_remote` already re-verifies content on receipt, so a lying
+  or corrupted mirror's response is rejected before `repair` ever sees
+  it — a bad mirror just means falling through to the next candidate,
+  the same as an unreachable one. Only once every candidate has been
+  tried does it report `RepairError::NoHealthyMirror`.
+- **New fault point**: `repair-all-mirrors-unreachable` forces every
+  candidate in `repair`'s loop to behave as unreachable, so the real
+  "try each one, then report a clean aggregate failure" logic actually
+  runs end-to-end — this is genuinely new logic (the other fault points
+  test detection at the storage/network layer; this one tests
+  `itsanas-repair`'s own exhaustion/error-reporting behavior). Wired into
+  the receipt-runner's scenario as an M3 step (mirror a chunk to two
+  nodes, then `repair()` it back) alongside the existing M1 pipeline —
+  see `scripts/receipt.sh`.
+
+`itsanas-repair` depends on `itsanas-net` directly (for `Node`,
+`EndpointAddr`, now re-exported from that crate rather than requiring
+callers to add `iroh` as a direct dependency just to name a type they
+already receive from `Node::addr()`).
 
 ## `itsanas-daemon`
 

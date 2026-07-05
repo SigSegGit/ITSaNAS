@@ -1,6 +1,6 @@
-//! Receipt-runner: runs the M1 two-node LAN scenario once, either cleanly
-//! or under one forced [`FaultPoint`], and reports (via exit code and a
-//! one-line message) whether the outcome matches what's expected.
+//! Receipt-runner: runs the M1+M3 scenario once, either cleanly or under
+//! one forced [`FaultPoint`], and reports (via exit code and a one-line
+//! message) whether the outcome matches what's expected.
 //!
 //! `scripts/receipt.sh` discovers the fault point list from
 //! `--list-fault-points` rather than hardcoding it, runs this binary once
@@ -10,7 +10,9 @@
 mod scenario;
 
 use itsanas_net::NetError;
+use itsanas_repair::RepairError;
 use itsanas_testkit::FaultPoint;
+use scenario::ScenarioError;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -33,7 +35,7 @@ fn main() {
 
 /// Decides pass/fail, prints a one-line verdict, and returns the process
 /// exit code: 0 for "behaved exactly as expected," 1 otherwise.
-fn report(requested: Option<FaultPoint>, result: Result<(), NetError>) -> i32 {
+fn report(requested: Option<FaultPoint>, result: Result<(), ScenarioError>) -> i32 {
     match (requested, result) {
         (None, Ok(())) => {
             println!("clean run: OK");
@@ -63,18 +65,27 @@ fn report(requested: Option<FaultPoint>, result: Result<(), NetError>) -> i32 {
     }
 }
 
-/// What kind of [`NetError`] each fault point is expected to surface as,
-/// when the surrounding code detects and handles it correctly.
-fn expected_for(point: FaultPoint, error: &NetError) -> bool {
-    match point {
+/// What kind of [`ScenarioError`] each fault point is expected to surface
+/// as, when the surrounding code detects and handles it correctly.
+fn expected_for(point: FaultPoint, error: &ScenarioError) -> bool {
+    match (point, error) {
         // The server's own storage.put() catches the corruption via
         // write-then-verify-readback and reports it back as a remote error.
-        FaultPoint::StorageWriteCorruption => matches!(error, NetError::Remote(_)),
+        (FaultPoint::StorageWriteCorruption, ScenarioError::Net(NetError::Remote(_))) => true,
         // The server's storage.get() fails and reports it back as a remote error.
-        FaultPoint::StorageGetIoFailure => matches!(error, NetError::Remote(_)),
+        (FaultPoint::StorageGetIoFailure, ScenarioError::Net(NetError::Remote(_))) => true,
         // The requester re-verifies content on receipt and catches the tamper itself.
-        FaultPoint::NetShardTamperInTransit => matches!(error, NetError::Verify(_)),
+        (FaultPoint::NetShardTamperInTransit, ScenarioError::Net(NetError::Verify(_))) => true,
         // The connection drops before a response ever arrives.
-        FaultPoint::NetPeerDisconnectMidTransfer => matches!(error, NetError::Transport(_)),
+        (FaultPoint::NetPeerDisconnectMidTransfer, ScenarioError::Net(NetError::Transport(_))) => {
+            true
+        }
+        // repair() tries every mirror, finds none reachable, and reports
+        // a clean aggregate failure rather than panicking or hanging.
+        (
+            FaultPoint::RepairAllMirrorsUnreachable,
+            ScenarioError::Repair(RepairError::NoHealthyMirror(_)),
+        ) => true,
+        _ => false,
     }
 }

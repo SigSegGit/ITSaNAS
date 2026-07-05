@@ -3211,6 +3211,7 @@ dependencies = [
  "itsanas-chunking",
  "itsanas-crypto",
  "itsanas-net",
+ "itsanas-repair",
  "itsanas-storage",
  "itsanas-testkit",
  "tempfile",
@@ -3220,6 +3221,15 @@ dependencies = [
 [[package]]
 name = "itsanas-repair"
 version = "0.1.0"
+dependencies = [
+ "itsanas-chunking",
+ "itsanas-net",
+ "itsanas-storage",
+ "itsanas-testkit",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+]
 
 [[package]]
 name = "itsanas-storage"

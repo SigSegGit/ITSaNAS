@@ -131,10 +131,10 @@ to the allowlist, sign once as a one-time exception, or leave this
 specific check red? It doesn't block merging either way — `cla-check`
 isn't a required status check, only `CI / ci` is.
 
-## M2 — NAT traversal via a self-hosted relay: DONE (on branch, not yet
-merged)
+## M2 — NAT traversal via a self-hosted relay: DONE (merged)
 
-On branch `claude/m2-relay-nat-traversal`. Implements D4 (never fall back
+Merged via [PR #5](https://github.com/SigSegGit/ITSaNAS/pull/5) into
+`main` (`f510649`). Implements D4 (never fall back
 to iroh's public relay infra), D5 (self-hosted relay), D12 (invite-only
 join), and D13 (CGNAT self-test) — see `ARCHITECTURE.md`'s expanded
 `itsanas-net` section for full design.
@@ -239,17 +239,55 @@ explicitly. M3 is deferred, not abandoned — see "Next steps" below.
   proper per-user locations (`dirs` crate) — a real installed app has no
   reliable working directory, and `Program Files` isn't user-writable.
 
+## M3 — mirroring, scrubbing, repair: DONE (on branch, not yet merged)
+
+Still on branch `claude/daemon-and-clients`. Implements D6's mirroring
+policy (full replication below the N≥4 erasure-coding threshold, which is
+M7) and the active half of D7 (scrubbing + repair) — see
+`ARCHITECTURE.md`'s new `itsanas-repair` section for full design.
+
+- **`scrub`**: re-verifies a set of shard ids against a `StorageRoot`,
+  classifying each healthy/corrupt/missing — reuses `StorageRoot::get`'s
+  existing verify-on-read rather than re-implementing hash checking.
+- **`MirrorSet`/`mirror_shard`**: pushes a shard to every peer in a
+  caller-provided mirror set, tolerating individual peer failures (D7
+  applies to mirrors too).
+- **`repair`**: restores a shard from the first mirror in the set with a
+  valid copy, falling through corrupt or unreachable candidates —
+  `Node::get_remote`'s existing re-verification means a lying mirror's
+  response is already rejected before `repair` sees it.
+- **New fault point**: `repair-all-mirrors-unreachable`, wired into
+  `repair`'s own peer loop (not the storage/network layer, which the
+  existing 4 fault points already cover) and into the receipt-runner's
+  scenario as a new M3 step. All 5 fault points plus the clean run pass
+  via `scripts/receipt.sh`.
+- **Found and fixed a real gap while wiring this up**: `itsanas-net`
+  didn't re-export `EndpointAddr` even though it's already part of its
+  public API (`Node::addr()` returns it, `get_remote`/`put_remote` take
+  it) — any downstream crate naming the type had to add `iroh` as its
+  own direct dependency just to spell it. Fixed by re-exporting it from
+  `itsanas-net` directly.
+- 5 new unit tests in `itsanas-repair` (mirroring to multiple peers,
+  partial-failure reporting, scrub classification, repair falling
+  through a corrupt mirror to a healthy one, repair failing cleanly when
+  no mirror has the shard), all passing; full `scripts/ci.sh` green.
+
 ## Next steps
 
 1. M2 (PR #5) is merged into `main` — done.
 2. Get `claude/daemon-and-clients` reviewed and merged (daemon, GUI,
-   Windows installer, Android client scaffold, docs/testing).
+   Windows installer, Android client scaffold, M3 mirroring/repair,
+   docs/testing).
 3. Android client (`android/`): needs an actual build on a machine with
    Android SDK access to go from "compiles in principle, network-layer
    verified standalone" to "actually runs" — a real device/emulator run
    is the remaining gap, not a design blocker.
-4. M3: mirroring + repair + scrubbing, hardened against hostile storage
-   backends (D7) — new logic in `itsanas-repair`, reusing
-   `itsanas-storage`'s write-then-verify-readback and
-   `itsanas-chunking`'s verify-on-read, plus new fault points for the
-   receipt script.
+4. `itsanas-daemon` doesn't call into `itsanas-repair` yet — the vault
+   currently has no mirror-peer configuration or scrub schedule of its
+   own. Wiring M3's mirroring/repair into the actual daemon (not just the
+   library + receipt scenario) is the next real integration step, likely
+   alongside M4 (accounts/quotas), since "who are my mirror peers" is a
+   multi-device/multi-account question.
+5. M7: Reed–Solomon erasure coding once the network reaches 4+ nodes,
+   replacing `itsanas-repair`'s full-replication mirroring above that
+   threshold (D6).

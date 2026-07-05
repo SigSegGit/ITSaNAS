@@ -42,6 +42,13 @@ pub enum FaultPoint {
     /// Proves the requesting peer surfaces this as a transport error
     /// rather than hanging indefinitely.
     NetPeerDisconnectMidTransfer,
+    /// Every candidate mirror peer behaves as unreachable during a
+    /// repair attempt (M3, D6/D7). Proves `itsanas-repair::repair`'s own
+    /// aggregate-failure logic — try each mirror in turn, then report a
+    /// clean "no healthy mirror" error — actually runs and reports
+    /// correctly, rather than panicking or hanging, when every mirror is
+    /// genuinely down.
+    RepairAllMirrorsUnreachable,
 }
 
 impl FaultPoint {
@@ -52,6 +59,7 @@ impl FaultPoint {
         FaultPoint::StorageGetIoFailure,
         FaultPoint::NetShardTamperInTransit,
         FaultPoint::NetPeerDisconnectMidTransfer,
+        FaultPoint::RepairAllMirrorsUnreachable,
     ];
 
     /// The stable string form used in `ITSANAS_FAULT_POINT` and
@@ -62,6 +70,7 @@ impl FaultPoint {
             FaultPoint::StorageGetIoFailure => "storage-get-io-failure",
             FaultPoint::NetShardTamperInTransit => "net-shard-tamper-in-transit",
             FaultPoint::NetPeerDisconnectMidTransfer => "net-peer-disconnect-mid-transfer",
+            FaultPoint::RepairAllMirrorsUnreachable => "repair-all-mirrors-unreachable",
         }
     }
 
