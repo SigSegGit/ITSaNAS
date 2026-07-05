@@ -36,7 +36,7 @@ describing its intended responsibility until its milestone is reached.
 | D6 | Mirroring at N<4, Reed–Solomon erasure coding at N≥4, ≤3× contribution overhead | `itsanas-repair`, `itsanas-quota` |
 | D7 | Hostile/unreliable storage backends: opaque ciphertext shards, BLAKE3 verify-on-read, scrubbing, permission-change detection, write-then-verify-readback | `itsanas-chunking` (content addressing), `itsanas-storage` (write-then-verify), `itsanas-repair` (scrubbing, monitoring) |
 | D8 | BIP39 mnemonic recovery kit | `itsanas-crypto` |
-| D9 | Android thin client over the daemon's authenticated API, min API 29 | `itsanas-daemon` (API), Android client (future, separate repo/module) |
+| D9 | Android thin client over the daemon's authenticated API, min API 29 | `itsanas-daemon` (API), `android/` (Kotlin/Compose client) |
 | D10 | Crypto stack: XChaCha20-Poly1305, X25519/Ed25519, Argon2id, BLAKE3 | `itsanas-crypto` (cipher, identities, KDF), `itsanas-chunking` (content addressing) |
 | D11 | No metered dependencies; portable scripts + thin CI wrapper | `scripts/ci.sh`, `scripts/release.sh`, `.github/workflows/ci.yml` |
 | D12 | Open code, private networks (invite-only) | `itsanas-net` (`Invite`), `README.md` |
@@ -292,6 +292,39 @@ there.
 
 See `INSTALL.md` for the end-user-facing installation and account/key
 management instructions.
+
+## Android client (`android/`)
+
+Implements the rest of D9: a genuinely thin Kotlin/Compose client over
+`itsanas-daemon`'s HTTP API — min SDK 29, Retrofit + OkHttp +
+kotlinx-serialization. A separate Gradle project (not part of the Cargo
+workspace), living at `android/` in this same repo rather than a separate
+one, since it's one client among several against the same daemon API.
+
+Unlike `itsanas-gui`, it doesn't run a daemon or attempt a folder mirror
+of its own — the user configures a base URL once (the daemon only ever
+binds to `127.0.0.1`, so reaching it from a phone always goes through
+something else: LAN, Tailscale, an SSH tunnel), then it's account
+setup/unlock plus a file list with upload/download/delete, uploads/
+downloads streamed via a content `Uri` rather than buffered fully into
+memory (`network/UriRequestBody.kt`) to match the daemon's own
+intentionally unbounded body size.
+
+**Verification status**: this sandbox cannot reach Google's Maven
+repository (same policy that blocks `dl.google.com`), so the Android
+Gradle Plugin itself can't be resolved here — confirmed directly (`gradle
+tasks` fails on `com.android.application:8.5.2` plugin resolution, not
+just at a later SDK-download step). What *could* be verified: the API
+contract layer (`network/Models.kt`, `DaemonApi.kt`, `RetrofitClient.kt`)
+doesn't reference any Android API, so it was compiled standalone in a
+throwaway Kotlin/JVM Gradle project against real Retrofit/OkHttp/
+kotlinx-serialization dependencies from Maven Central (which isn't
+blocked). That caught a real bug — the kotlinx-serialization Retrofit
+converter's actual package is `com.jakewharton.retrofit2.converter
+.kotlinx.serialization`, not `retrofit2.converter.kotlinx.serialization`
+— fixed. The Compose UI and anything touching `android.*` APIs
+(`ContentResolver`, activity result contracts) remains unverified until
+built on a machine with real SDK access. See `android/README.md`.
 
 ## Test mode & the receipt script
 

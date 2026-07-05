@@ -208,11 +208,24 @@ explicitly. M3 is deferred, not abandoned — see "Next steps" below.
   installer in this environment (can't be run interactively here — no
   Windows machine in this sandbox — but both bundled binaries
   cross-compile and the installer builds cleanly via `makensis`).
-- **Android client**: not started this round — Android SDK downloads are
-  blocked by this sandbox's network egress policy (`dl.google.com`
-  returns 403), so any Kotlin/Compose source written here would be
-  unverifiable. Flagging this explicitly rather than writing unverified
-  code and calling it done.
+- **Android client** (`android/`): a genuinely thin Kotlin/Compose client
+  over `itsanas-daemon`'s HTTP API (D9, min SDK 29) — Retrofit + OkHttp +
+  kotlinx-serialization, account setup/unlock, file list with
+  upload/download/delete (streamed via a content `Uri`, not buffered, to
+  match the daemon's unbounded body size). Unlike `itsanas-gui` it
+  doesn't run a daemon or attempt a folder mirror — the user configures a
+  base URL once, since the daemon only binds to `127.0.0.1` and reaching
+  it from a phone always goes through something else (LAN/Tailscale/SSH
+  tunnel). Full Gradle build is genuinely blocked in this sandbox
+  (confirmed directly: `gradle tasks` fails resolving the Android Gradle
+  Plugin itself against Google's Maven repo, the same block that affects
+  `dl.google.com`) — but the API contract layer (`Models.kt`,
+  `DaemonApi.kt`, `RetrofitClient.kt`) doesn't touch any Android API, so
+  it was compiled standalone against real dependencies from Maven Central
+  (not blocked), catching and fixing one real bug (wrong package for the
+  kotlinx-serialization Retrofit converter). The Compose UI remains
+  unverified until built on a machine with real SDK access — see
+  `android/README.md`.
 - **Real-life testing** (`TESTING.md`): live multi-account isolation,
   stolen-vault-data, at-rest-encryption, and large-binary-file-integrity
   testing against running daemon instances (not just unit tests). Found
@@ -228,13 +241,13 @@ explicitly. M3 is deferred, not abandoned — see "Next steps" below.
 
 ## Next steps
 
-1. Get the M2 branch reviewed and merged. Confirm on this PR (opened after
-   PR #4 merged) that `cla-check` genuinely passes now, not via the
-   lock-only shortcut.
-2. Get `claude/daemon-and-clients` reviewed and merged.
-3. Android client (M5, moved earlier at the owner's request): needs a real
-   Android SDK / emulator or physical device to write and verify against —
-   blocked in this sandbox specifically, not a design blocker.
+1. M2 (PR #5) is merged into `main` — done.
+2. Get `claude/daemon-and-clients` reviewed and merged (daemon, GUI,
+   Windows installer, Android client scaffold, docs/testing).
+3. Android client (`android/`): needs an actual build on a machine with
+   Android SDK access to go from "compiles in principle, network-layer
+   verified standalone" to "actually runs" — a real device/emulator run
+   is the remaining gap, not a design blocker.
 4. M3: mirroring + repair + scrubbing, hardened against hostile storage
    backends (D7) — new logic in `itsanas-repair`, reusing
    `itsanas-storage`'s write-then-verify-readback and
