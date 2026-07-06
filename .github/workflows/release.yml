@@ -77,6 +77,16 @@ jobs:
             fi
           done
 
+      - name: Verify every expected artifact actually exists
+        # upload-artifact and action-gh-release both silently skip
+        # missing files — that's how Release run #2 shipped without the
+        # Windows installer. Fail loudly here instead.
+        run: |
+          ls -l dist
+          test -f dist/itsanas-installer.exe
+          test -f dist/itsanas-x86_64-unknown-linux-gnu.tar.gz
+          test -f dist/itsanas-aarch64-unknown-linux-gnu.tar.gz
+
       - name: Upload build artifacts (always, even outside a tag push)
         uses: actions/upload-artifact@v4
         with:
