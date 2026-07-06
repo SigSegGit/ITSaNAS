@@ -195,6 +195,7 @@ it:
 | Android | `scripts/test-android-logic.sh` (`--full` only; needs `gradle` + Maven Central) | The exact production `Models.kt`/`DaemonApi.kt`/`RetrofitClient.kt` — not copies — round-tripped against literal JSON shaped like the daemon's real responses, so a field rename on either side fails immediately instead of silently breaking on a real phone |
 | Windows installer | `scripts/package-windows-installer.sh` (`--full` only; needs `mingw-w64` + `nsis`) | Both binaries cross-compile and `makensis` produces a valid installer |
 | Windows behavior | `scripts/test-windows.sh` (`--full` only; needs `mingw-w64` + `wine` — also runs in GitHub CI on every commit) | The fs-heavy crates (`itsanas-storage`, `itsanas-chunking`, `itsanas-crypto`) tested as **real Windows binaries** under Wine. Exists because the very first real Windows install failed every shard write with "Access denied" (os error 5): `FlushFileBuffers` refuses read-only handles on Windows, while `fsync` on Linux accepts them — a class of bug no amount of Linux-side testing can see. Under Wine the buggy code failed 9 of 12 storage tests and the fixed code passes all 12, so this layer demonstrably reproduces the real failure |
+| Windows e2e | `scripts/smoke-e2e-windows.sh` (`--full` only; needs `mingw-w64` + `wine` — also runs in GitHub CI on every commit) | The **entire smoke-e2e suite** (all 25 assertions: accounts, vault isolation, stolen-data resistance, at-rest encryption, binary round-trip, folder sync both directions, scrub, lock enforcement) against the **release Windows daemon binary** under Wine — the same profile the shipped installer contains. Note: the script works around an Ubuntu wine 9.0 packaging bug (wine's own PE `user32.dll` needs a `zlib1.dll` the loader can't find; the daemon pulls user32/crypt32 in via cert-store and known-folder APIs, so without the workaround it can't even start) |
 | Infra/workflow | `.github/workflows/ci.yml`, `cla.yml` | CI itself runs `scripts/ci.sh`; CLA gating is exercised by every real PR |
 
 Plain `scripts/ci.sh` (no flag) runs the first three rows — everything
@@ -213,3 +214,37 @@ gets a `smoke-e2e.sh` (or receipt-mode) check, a new GUI action gets a
 test against a real in-process daemon the way `do_setup`/`do_unlock`/
 `do_lock` do. The goal is that `./scripts/ci.sh --full` passing is
 sufficient evidence the software works, not just that it compiles.
+
+## Known blind spots
+
+Places where the shipped artifact still runs somewhere no automated test
+executes it. Kept here deliberately: a gap that's written down gets
+weighed before every release; a gap nobody wrote down ships bugs (that's
+exactly how the Windows os-error-5 shard-write failure reached a real
+user's machine — the code had simply never been executed on Windows).
+Anything removed from this list must be removed by *adding the test*,
+not by deleting the bullet.
+
+- **The GUI window on real Windows.** `itsanas-gui`'s screen transitions
+  and actions are tested against a real in-process daemon, and the
+  daemon side is e2e-tested as a Windows binary — but actual window
+  creation (eframe/wgpu on a real Windows display driver) has no
+  automated coverage; Wine in CI has no display. Regression here would
+  look like: binary starts, no window appears. Mitigation: manual check
+  on a real Windows machine at each release.
+- **The NSIS installer is built but never executed.** CI proves
+  `makensis` produces an installer; nothing automatically installs it
+  and runs what it installed. Silent-install-under-Wine is feasible in
+  principle and is the natural next test to add.
+- **The Android APK is never compiled in CI.** The network-contract
+  logic layer (exact production `Models.kt`/`DaemonApi.kt`) runs under
+  plain gradle, but the full Compose app needs the Android SDK, which
+  CI doesn't have — a break in the UI layer or manifest only surfaces
+  when someone builds the APK locally.
+- **The aarch64 Linux release binaries are cross-compiled but never
+  executed** (would need qemu-user or an arm64 runner). They share ~all
+  code with the tested x86_64 build, so the realistic risk is
+  arch-specific dependency breakage, not logic.
+- **Real-internet NAT/CGNAT paths.** The relay integration test runs a
+  real relay binary on loopback, and D13 gives users a connectivity
+  self-test, but no CI job crosses a real NAT.

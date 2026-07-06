@@ -67,6 +67,9 @@ if [ "$FULL" -eq 1 ]; then
     if command -v x86_64-w64-mingw32-gcc >/dev/null 2>&1 && command -v wine >/dev/null 2>&1; then
         echo "==> windows tests under wine (fs-heavy crates as real Windows binaries)"
         ./scripts/test-windows.sh
+
+        echo "==> windows e2e smoke test under wine (release daemon binary)"
+        ./scripts/smoke-e2e-windows.sh
     else
         echo "==> skipping windows tests: mingw-w64 and/or wine not found" >&2
     fi

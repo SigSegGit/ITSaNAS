@@ -43,3 +43,11 @@ jobs:
 
       - name: Run Windows tests under Wine
         run: ./scripts/test-windows.sh
+
+      # Same idea one level up: the whole smoke-e2e suite (real daemons,
+      # HTTP + on-disk assertions) against the release Windows daemon
+      # binary under Wine — the daemon is a different program on Windows
+      # (filesystem semantics, socket stack, known-folder/cert-store
+      # APIs) and this is the layer that exercises it end-to-end.
+      - name: Run Windows e2e smoke test under Wine
+        run: ./scripts/smoke-e2e-windows.sh

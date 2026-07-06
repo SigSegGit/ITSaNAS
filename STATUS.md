@@ -426,6 +426,29 @@ harness demonstrably reproduces this bug class. Wired into
 `.github/workflows/ci.yml` on every commit, so Windows-only filesystem
 regressions now fail CI instead of shipping.
 
+## Windows testing deepened after owner feedback: e2e under Wine
+
+The owner's (correct) verdict on the above: unit tests passing on Linux
+while the product was dead on arrival on Windows means the testing was
+too light, full stop. Follow-up shipped: `scripts/smoke-e2e-windows.sh`
+runs the **entire** smoke-e2e suite — all 25 assertions: accounts,
+vault isolation, stolen-data resistance, at-rest encryption, 3 MiB
+binary round-trip, folder sync both directions, background scrub, lock
+enforcement — against the **release Windows daemon binary** under Wine,
+i.e. the same profile that ships in the installer, exercising the
+Windows socket stack and filesystem end-to-end. In GitHub CI on every
+commit and in `ci.sh --full`. Two infrastructure potholes hit and
+solved on the way: debug windows-gnu builds of iroh-relay exceed
+mingw's 64k DLL-export limit (so the script builds release, which is
+what ships anyway), and Ubuntu's wine 9.0 packaging loses its own
+`zlib1.dll` (without which the daemon can't even load user32/crypt32 —
+the script copies it into the prefix). TESTING.md now also carries a
+**Known blind spots** register — every place a shipped artifact runs
+where no automated test executes it (GUI window on a real Windows
+display, NSIS installer never executed, Android APK not compiled in
+CI, aarch64 binaries never run, real-internet NAT paths) is either
+tested or written down; removing an entry requires adding the test.
+
 ## Next steps
 
 1. M2 (PR #5) and daemon/GUI/installer/Android/M3/test-automation (PR #6)

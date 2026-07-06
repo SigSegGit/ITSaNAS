@@ -89,7 +89,7 @@ start_daemon() {
     local port="$1" data_dir="$2" sync_dir="$3" log="$4"
     mkdir -p "$data_dir" "$sync_dir"
     ITSANAS_DATA_DIR="$data_dir" ITSANAS_SYNC_DIR="$sync_dir" ITSANAS_PORT="$port" \
-        ./target/debug/itsanas-daemon >"$log" 2>&1 &
+        ${DAEMON_CMD:-./target/debug/itsanas-daemon} >"$log" 2>&1 &
     PIDS+=("$!")
 
     local waited=0
@@ -118,8 +118,14 @@ wait_until() {
     pass "$desc"
 }
 
-echo "==> building itsanas-daemon"
-cargo build --quiet -p itsanas-daemon
+# DAEMON_CMD overrides the daemon under test — scripts/smoke-e2e-windows.sh
+# uses it to run the exact same assertions against the Windows daemon
+# binary under Wine. When overridden, the caller is responsible for having
+# built whatever DAEMON_CMD points at.
+if [ -z "${DAEMON_CMD:-}" ]; then
+    echo "==> building itsanas-daemon"
+    cargo build --quiet -p itsanas-daemon
+fi
 
 # A short scrub interval so the background-scrub check below doesn't have
 # to wait out the real (multi-hour) default.
