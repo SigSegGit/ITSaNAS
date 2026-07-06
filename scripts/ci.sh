@@ -63,6 +63,13 @@ if [ "$FULL" -eq 1 ]; then
     else
         echo "==> skipping windows installer build: mingw-w64 and/or nsis not found" >&2
     fi
+
+    if command -v x86_64-w64-mingw32-gcc >/dev/null 2>&1 && command -v wine >/dev/null 2>&1; then
+        echo "==> windows tests under wine (fs-heavy crates as real Windows binaries)"
+        ./scripts/test-windows.sh
+    else
+        echo "==> skipping windows tests: mingw-w64 and/or wine not found" >&2
+    fi
 fi
 
 echo "==> all checks passed"

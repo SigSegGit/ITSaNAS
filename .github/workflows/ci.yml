@@ -29,3 +29,17 @@ jobs:
 
       - name: Run CI script
         run: ./scripts/ci.sh
+
+      # Windows filesystem semantics differ from Linux in ways the
+      # native test run can't see (first real Windows install: every
+      # shard write failed with os error 5 because FlushFileBuffers
+      # refuses read-only handles). Run the fs-heavy crates' tests as
+      # real Windows binaries under Wine so that class of regression
+      # fails CI instead of shipping.
+      - name: Install mingw-w64 and wine
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mingw-w64 wine
+
+      - name: Run Windows tests under Wine
+        run: ./scripts/test-windows.sh
