@@ -177,8 +177,10 @@ join), and D13 (CGNAT self-test) — see `ARCHITECTURE.md`'s expanded
 24 new/changed tests across `itsanas-net`, all passing, `scripts/ci.sh`
 green end-to-end.
 
-## itsanas-daemon, itsanas-gui, Windows installer: DONE (on branch
-`claude/daemon-and-clients`, not yet merged)
+## itsanas-daemon, itsanas-gui, Windows installer: DONE (merged)
+
+Merged via [PR #6](https://github.com/SigSegGit/ITSaNAS/pull/6) into
+`main`.
 
 Deliberate reprioritization at the owner's direction: rather than
 continuing straight to M3 (mirroring/repair) after M2, this branch builds
@@ -239,9 +241,10 @@ explicitly. M3 is deferred, not abandoned — see "Next steps" below.
   proper per-user locations (`dirs` crate) — a real installed app has no
   reliable working directory, and `Program Files` isn't user-writable.
 
-## M3 — mirroring, scrubbing, repair: DONE (on branch, not yet merged)
+## M3 — mirroring, scrubbing, repair: DONE (merged)
 
-Still on branch `claude/daemon-and-clients`. Implements D6's mirroring
+Merged via [PR #6](https://github.com/SigSegGit/ITSaNAS/pull/6) into
+`main`. Implements D6's mirroring
 policy (full replication below the N≥4 erasure-coding threshold, which is
 M7) and the active half of D7 (scrubbing + repair) — see
 `ARCHITECTURE.md`'s new `itsanas-repair` section for full design.
@@ -272,7 +275,9 @@ M7) and the active half of D7 (scrubbing + repair) — see
   through a corrupt mirror to a healthy one, repair failing cleanly when
   no mirror has the shard), all passing; full `scripts/ci.sh` green.
 
-## Comprehensive test automation: DONE (on branch, not yet merged)
+## Comprehensive test automation: DONE (merged)
+
+Merged via [PR #6](https://github.com/SigSegGit/ITSaNAS/pull/6) into `main`.
 
 Standing requirement going forward, not a one-time cleanup: `./scripts/ci.sh
 --full` is now the single command that runs every layer of testing this
@@ -308,20 +313,18 @@ for the full table. New this round:
 
 ## Next steps
 
-1. M2 (PR #5) is merged into `main` — done.
-2. Get `claude/daemon-and-clients` reviewed and merged (daemon, GUI,
-   Windows installer, Android client scaffold, M3 mirroring/repair,
-   comprehensive test automation, docs/testing).
-3. Android client (`android/`): needs an actual build on a machine with
+1. M2 (PR #5) and daemon/GUI/installer/Android/M3/test-automation (PR #6)
+   are both merged into `main` — done.
+2. Android client (`android/`): needs an actual build on a machine with
    Android SDK access to go from "compiles in principle, network-layer
    verified standalone" to "actually runs" — a real device/emulator run
    is the remaining gap, not a design blocker.
-4. `itsanas-daemon` doesn't call into `itsanas-repair` yet — the vault
+3. `itsanas-daemon` doesn't call into `itsanas-repair` yet — the vault
    currently has no mirror-peer configuration or scrub schedule of its
    own. Wiring M3's mirroring/repair into the actual daemon (not just the
    library + receipt scenario) is the next real integration step, likely
    alongside M4 (accounts/quotas), since "who are my mirror peers" is a
    multi-device/multi-account question.
-5. M7: Reed–Solomon erasure coding once the network reaches 4+ nodes,
+4. M7: Reed–Solomon erasure coding once the network reaches 4+ nodes,
    replacing `itsanas-repair`'s full-replication mirroring above that
    threshold (D6).
