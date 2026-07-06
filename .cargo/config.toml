@@ -1,0 +1,7 @@
+# Cross-compilation linker configuration. rustc's built-in default for
+# x86_64-pc-windows-gnu already picks the right mingw linker, but for
+# aarch64-unknown-linux-gnu the default is the *host* `cc`, which fails
+# at link time ("incompatible with elf64-x86-64") — found the first time
+# scripts/release.sh actually ran in CI (Release run #1).
+[target.aarch64-unknown-linux-gnu]
+linker = "aarch64-linux-gnu-gcc"
