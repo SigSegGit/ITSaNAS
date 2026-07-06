@@ -13,10 +13,17 @@ name: Release
 on:
   push:
     tags: ["v*"]
+    # Pushing a branch named release/v<X.Y.Z> also cuts the release
+    # <vX.Y.Z>, with the tag created server-side at that commit. This is
+    # the trigger this project's own automation actually uses: its git
+    # proxy rejects tag pushes (403) and its GitHub App token can't call
+    # the workflow_dispatch API ("Resource not accessible by
+    # integration") — plain branch pushes are the one reliable write
+    # path. Humans with full credentials can use any of the three.
+    branches: ["release/v*"]
   # Manual dispatch: with a `tag` input, publishes a full release and
-  # creates that tag server-side (needed because this project's tooling
-  # pushes branches through a proxy that rejects tag pushes); without
-  # one, it's a dry run that only uploads workflow artifacts.
+  # creates that tag server-side; without one, it's a dry run that only
+  # uploads workflow artifacts.
   workflow_dispatch:
     inputs:
       tag:
@@ -78,14 +85,32 @@ jobs:
             dist/itsanas-installer.exe
             dist/*.tar.gz
 
+      - name: Work out the release tag for this trigger
+        id: tag
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            # Tag push: gh-release uses the pushed tag itself when
+            # tag_name is empty.
+            echo "tag=" >> "$GITHUB_OUTPUT"
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          elif [[ "${GITHUB_REF_NAME}" == release/v* ]]; then
+            echo "tag=${GITHUB_REF_NAME#release/}" >> "$GITHUB_OUTPUT"
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          elif [[ -n "${DISPATCH_TAG}" ]]; then
+            echo "tag=${DISPATCH_TAG}" >> "$GITHUB_OUTPUT"
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=" >> "$GITHUB_OUTPUT"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          DISPATCH_TAG: ${{ inputs.tag }}
+
       - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v') || inputs.tag != ''
+        if: steps.tag.outputs.publish == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          # On a tag push, tag_name is empty and the action uses the
-          # pushed tag; on manual dispatch it creates the given tag at
-          # the dispatched commit.
-          tag_name: ${{ inputs.tag }}
+          tag_name: ${{ steps.tag.outputs.tag }}
           files: |
             dist/itsanas-installer.exe
             dist/*.tar.gz
