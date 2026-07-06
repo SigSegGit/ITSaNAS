@@ -39,8 +39,16 @@ package_binaries_for() {
     done
 }
 
-rm -rf dist
+# Clean only this script's own per-target output directories — never
+# dist/ wholesale. Other packaging steps (the Windows installer) also
+# write into dist/, and wiping the whole directory silently destroyed
+# dist/itsanas-installer.exe in Release run #2: the release published
+# with the installer missing because the upload steps skip absent files
+# without failing.
 mkdir -p dist
+for target in "${TARGETS[@]}"; do
+    rm -rf "dist/${target}"
+done
 
 for target in "${TARGETS[@]}"; do
     echo "==> adding rustup target ${target}"
