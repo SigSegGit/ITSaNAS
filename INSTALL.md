@@ -6,8 +6,15 @@ actually open — account setup/unlock, and where your synced folder lives).
 
 ## Windows
 
-1. Download `itsanas-installer.exe` (built from `packaging/windows/` — see
-   "Building the installer" below if you're building from source).
+1. Go to the project's
+   [Releases page](https://github.com/SigSegGit/ITSaNAS/releases/latest)
+   and download `itsanas-installer.exe` from the latest release's
+   Assets. (If you went looking in the source tree instead and found
+   `packaging/windows/installer.nsi` — that's the *source* the installer
+   is compiled from, not the installer itself, same as a `.c` file isn't
+   a program until compiled; the Releases page has the actual compiled
+   `.exe`. See "Building the installer from source" below only if you
+   want to build your own instead of using a release.)
 2. Double-click it. There's no admin/UAC prompt — it installs to your own
    user account, the same way Dropbox or Google Drive's installer does.
 3. It adds a **Desktop shortcut** and a **Start Menu** entry named
