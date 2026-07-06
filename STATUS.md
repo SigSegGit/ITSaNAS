@@ -392,6 +392,40 @@ environment: `mingw-w64` + `nsis` are both present here, and
 `scripts/package-windows-installer.sh` produces a real 16 MB
 `itsanas-installer.exe` end-to-end.
 
+## v0.1.0 released; first real Windows install found a showstopper: FIXED
+
+Cutting the actual release surfaced three latent release-tooling bugs in
+a row (each documented in its PR): no cross-linker configured for
+aarch64 (PR #15), `release.sh` wiping the just-built Windows installer
+out of `dist/` combined with upload steps that skip missing files
+silently (PR #16, which also added a hard artifact-existence check), and
+two proxy/API limitations that meant neither tag pushes nor
+workflow_dispatch could be triggered from this automation — solved by
+making a `release/v*` branch push a first-class release trigger
+(PRs #13/#14). v0.1.0 is live with `itsanas-installer.exe` plus both
+Linux tarballs:
+https://github.com/SigSegGit/ITSaNAS/releases/tag/v0.1.0
+
+Then the owner installed it on a real Windows machine and every shard
+write failed with "Accès refusé" (os error 5), sync retrying forever,
+zero files ever landing in the vault. Root cause
+(`itsanas-storage/src/root.rs`): after writing the temp shard file, the
+code re-opened it **read-only** just to `sync_all()`. Linux allows
+fsync on a read-only fd; Windows' `FlushFileBuffers` demands write
+access and fails with exactly that error — so the daemon had literally
+never been able to store a single byte on Windows, and no Linux-side
+test could ever have seen it. Fixed by writing and syncing through one
+writable handle.
+
+**Testing gap closed, not just the bug**: new `scripts/test-windows.sh`
+runs the fs-heavy crates (`itsanas-storage`, `itsanas-chunking`,
+`itsanas-crypto`) as real Windows binaries under Wine — the buggy code
+fails 9 of 12 storage tests under it, the fix passes 12/12, so the
+harness demonstrably reproduces this bug class. Wired into
+`scripts/ci.sh --full` (auto-skips without `mingw-w64`/`wine`) and into
+`.github/workflows/ci.yml` on every commit, so Windows-only filesystem
+regressions now fail CI instead of shipping.
+
 ## Next steps
 
 1. M2 (PR #5) and daemon/GUI/installer/Android/M3/test-automation (PR #6)

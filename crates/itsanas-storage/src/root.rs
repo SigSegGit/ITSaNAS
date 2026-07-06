@@ -44,7 +44,17 @@ impl StorageRoot {
                 .expect("system clock is after the epoch")
                 .as_nanos()
         ));
-        fs::write(&tmp_path, data)?;
+        {
+            use std::io::Write as _;
+            // Write and sync through the same writable handle. Re-opening
+            // read-only just to sync (the previous approach) works on
+            // Linux but fails on Windows: FlushFileBuffers demands write
+            // access, so every put() died with "Access denied" (os error
+            // 5) — found by the first real Windows install.
+            let mut f = fs::File::create(&tmp_path)?;
+            f.write_all(data)?;
+            f.sync_all()?;
+        }
 
         #[cfg(feature = "test-mode")]
         if itsanas_testkit::should_fail(itsanas_testkit::FaultPoint::StorageWriteCorruption) {
@@ -58,10 +68,6 @@ impl StorageRoot {
             fs::write(&tmp_path, corrupted)?;
         }
 
-        {
-            let f = fs::File::open(&tmp_path)?;
-            f.sync_all()?;
-        }
         fs::rename(&tmp_path, &final_path)?;
 
         let written_back = fs::read(&final_path)?;
