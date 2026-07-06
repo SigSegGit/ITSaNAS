@@ -121,6 +121,10 @@ wait_until() {
 echo "==> building itsanas-daemon"
 cargo build --quiet -p itsanas-daemon
 
+# A short scrub interval so the background-scrub check below doesn't have
+# to wait out the real (multi-hour) default.
+export ITSANAS_SCRUB_INTERVAL_SECS=1
+
 PORT_A=14279
 PORT_B=14280
 PORT_STOLEN=14281
@@ -201,6 +205,27 @@ curl -s "http://127.0.0.1:$PORT_A/files/random_3mb.bin" -o "$ROOT/downloaded_3mb
 actual_hash=$(sha256sum "$ROOT/downloaded_3mb.bin" | awk '{print $1}')
 assert_eq "$actual_hash" "$expected_hash" "downloaded file is byte-for-byte identical (sha256 match)"
 
+echo "==> background scrub detects a corrupted file and reports it by name (D7)"
+wait_until "http://127.0.0.1:$PORT_A/status" '.vault_health != null' \
+    "the first background scrub completes and populates vault_health"
+
+before_shards=$(find "$DIR_A/data/shards" -type f | sort)
+curl -s -X PUT "http://127.0.0.1:$PORT_A/files/for-scrub-test.txt" \
+    --data-binary 'content that will get corrupted for the scrub test' >/dev/null
+after_shards=$(find "$DIR_A/data/shards" -type f | sort)
+new_shard=$(comm -13 <(echo "$before_shards") <(echo "$after_shards") | head -1)
+
+if [ -z "$new_shard" ]; then
+    fail "background scrub test: could not identify the new shard file to corrupt"
+else
+    # Corrupt it directly on disk, bypassing put()'s own
+    # write-then-verify-readback (which would just reject it at write time).
+    echo "corrupted content for scrub test" >"$new_shard"
+    wait_until "http://127.0.0.1:$PORT_A/status" \
+        '.vault_health.unhealthy_files | contains(["for-scrub-test.txt"])' \
+        "background scrub detects the corrupted file and reports it by name via /status"
+fi
+
 echo "==> folder sync: folder -> vault"
 echo "hello from the synced folder" >"$DIR_A/synced/from-folder.txt"
 wait_until "http://127.0.0.1:$PORT_A/files" '[.[] | .name] | contains(["from-folder.txt"])' \
@@ -242,6 +267,9 @@ echo "should not sync while locked" >"$DIR_A/synced/locked-test.txt"
 sleep 1
 code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT_A/files")
 assert_eq "$code" "401" "the API is locked out after /account/lock"
+
+vault_health=$(curl -s "http://127.0.0.1:$PORT_A/status" | jq -c '.vault_health')
+assert_eq "$vault_health" "null" "a locked vault hides its health report too (reveals nothing, not even that)"
 
 curl -s -X POST "http://127.0.0.1:$PORT_A/account/unlock" \
     -H 'Content-Type: application/json' -d '{"password":"alice-secret-pw-1"}' >/dev/null

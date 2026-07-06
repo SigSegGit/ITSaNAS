@@ -7,11 +7,12 @@
 //! list is itself encrypted at rest with the master key, so nothing about
 //! a locked vault — not even file names — is readable without it.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use itsanas_chunking::{chunk, verify_chunk, ChunkId, DEFAULT_CHUNK_SIZE};
 use itsanas_crypto::cipher;
+use itsanas_repair::ShardStatus;
 use itsanas_storage::StorageRoot;
 use serde::{Deserialize, Serialize};
 
@@ -38,6 +39,15 @@ struct FileEntry {
 pub struct FileInfo {
     pub name: String,
     pub size: u64,
+}
+
+/// The result of a scrub (D7's active detection half): how many shards
+/// re-verified as healthy, and which files have at least one shard that
+/// didn't. Safe to return to a client — file names only, no key material.
+#[derive(Serialize, Deserialize, Clone, Default, PartialEq, Debug)]
+pub struct VaultHealth {
+    pub healthy_shards: usize,
+    pub unhealthy_files: Vec<String>,
 }
 
 pub struct Vault {
@@ -130,6 +140,50 @@ impl Vault {
             }
         }
         self.save_manifest(master_key, &manifest)
+    }
+
+    /// Re-verifies every shard currently referenced by the manifest
+    /// against `itsanas-storage`'s own verify-on-read (D7's active
+    /// detection half — catches a shard that degraded or was tampered
+    /// with after being written, not just at the moment something
+    /// happens to read it). Reuses `itsanas_repair::scrub` rather than
+    /// re-implementing the healthy/corrupt/missing classification, then
+    /// maps flagged shards back to the file name(s) that reference them.
+    pub fn scrub(&self, master_key: &[u8; 32]) -> Result<VaultHealth, DaemonError> {
+        let manifest = self.load_manifest(master_key)?;
+
+        let mut id_to_files: BTreeMap<ChunkId, Vec<String>> = BTreeMap::new();
+        for (name, entry) in &manifest.files {
+            for hex_id in &entry.chunk_ids {
+                let id_bytes: [u8; 32] = hex_decode(hex_id)?
+                    .try_into()
+                    .map_err(|_| DaemonError::Corrupt("bad chunk id length".to_string()))?;
+                id_to_files
+                    .entry(ChunkId::from_bytes(id_bytes))
+                    .or_default()
+                    .push(name.clone());
+            }
+        }
+        let all_ids: Vec<ChunkId> = id_to_files.keys().copied().collect();
+
+        let report = itsanas_repair::scrub(&self.storage, &all_ids);
+        let mut healthy_shards = 0;
+        let mut unhealthy_files = BTreeSet::new();
+        for (id, status) in &report.statuses {
+            match status {
+                ShardStatus::Healthy => healthy_shards += 1,
+                ShardStatus::Corrupt | ShardStatus::Missing => {
+                    if let Some(names) = id_to_files.get(id) {
+                        unhealthy_files.extend(names.iter().cloned());
+                    }
+                }
+            }
+        }
+
+        Ok(VaultHealth {
+            healthy_shards,
+            unhealthy_files: unhealthy_files.into_iter().collect(),
+        })
     }
 
     fn load_manifest(&self, master_key: &[u8; 32]) -> Result<Manifest, DaemonError> {
@@ -226,5 +280,48 @@ mod tests {
             vault.get(&wrong_key, "secret.txt"),
             Err(DaemonError::WrongPassword)
         ));
+    }
+
+    #[test]
+    fn scrub_reports_all_healthy_when_nothing_is_corrupted() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = Vault::open(dir.path()).unwrap();
+        vault.put(&key(), "a.txt", b"aaa").unwrap();
+        vault.put(&key(), "b.txt", b"bbbbb").unwrap();
+
+        let health = vault.scrub(&key()).unwrap();
+
+        assert_eq!(health.healthy_shards, 2);
+        assert!(health.unhealthy_files.is_empty());
+    }
+
+    #[test]
+    fn scrub_flags_a_file_whose_shard_was_corrupted_on_disk() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = Vault::open(dir.path()).unwrap();
+        vault
+            .put(&key(), "fine.txt", b"this one stays fine")
+            .unwrap();
+        vault
+            .put(&key(), "corrupted.txt", b"this one gets tampered with")
+            .unwrap();
+
+        // Corrupt "corrupted.txt"'s single shard directly on disk,
+        // bypassing put()'s own write-then-verify-readback (which would
+        // just reject the corruption at write time).
+        let manifest_files = &vault.load_manifest(&key()).unwrap().files;
+        let hex_id = &manifest_files["corrupted.txt"].chunk_ids[0];
+        let shard_path = dir
+            .path()
+            .join("shards")
+            .join("shards")
+            .join(&hex_id[0..2])
+            .join(hex_id);
+        std::fs::write(&shard_path, b"corrupted!").unwrap();
+
+        let health = vault.scrub(&key()).unwrap();
+
+        assert_eq!(health.healthy_shards, 1);
+        assert_eq!(health.unhealthy_files, vec!["corrupted.txt".to_string()]);
     }
 }

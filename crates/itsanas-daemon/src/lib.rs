@@ -3,14 +3,17 @@
 //!
 //! Ties `itsanas-crypto`, `itsanas-chunking`, and `itsanas-storage` into a
 //! single-user encrypted vault ([`vault::Vault`]) behind a password-derived
-//! master key ([`account`]). Peer-to-peer sync (`itsanas-net`) and
-//! multi-device accounts (M4) are not wired in yet — this milestone is the
-//! local vault + API surface both clients need to exist at all.
+//! master key ([`account`]), a folder-sync engine ([`sync`]), and
+//! background scrubbing ([`scrub`], D7's active detection half —
+//! `itsanas-repair`'s mirroring/recovery half isn't wired in yet, since
+//! that needs a real mirror-peer list, a multi-device accounts (M4)
+//! question).
 
 mod account;
 mod error;
 mod hex;
 pub mod http;
+pub mod scrub;
 mod state;
 pub mod sync;
 mod vault;

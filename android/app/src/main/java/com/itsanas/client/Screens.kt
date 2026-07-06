@@ -188,6 +188,14 @@ fun MainScreen(state: UiState, viewModel: DaemonViewModel, onChangeServer: () ->
             Text(it)
         }
 
+        state.status?.vaultHealth?.unhealthyFiles?.takeIf { it.isNotEmpty() }?.let { unhealthy ->
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                "${unhealthy.size} file(s) need attention (failed a background " +
+                    "integrity check): ${unhealthy.joinToString(", ")}",
+            )
+        }
+
         Spacer(modifier = Modifier.height(16.dp))
         Text("${state.files.size} file(s) in the vault:")
         LazyColumn {

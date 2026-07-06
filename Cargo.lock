@@ -3165,6 +3165,7 @@ dependencies = [
  "dirs",
  "itsanas-chunking",
  "itsanas-crypto",
+ "itsanas-repair",
  "itsanas-storage",
  "notify",
  "reqwest 0.12.28",

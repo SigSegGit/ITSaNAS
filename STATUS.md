@@ -325,6 +325,36 @@ for the full table. New this round:
   (`scripts/package-windows-installer.sh`) when `mingw-w64`/`nsis` are
   present, auto-skipping gracefully otherwise.
 
+## Background scrubbing wired into the daemon: DONE (on branch, not yet
+merged)
+
+Still on branch `claude/daemon-and-clients`. The first half of "wire M3
+into the daemon" — see `ARCHITECTURE.md`'s expanded `itsanas-daemon`
+section for full design.
+
+- `Vault::scrub` reuses `itsanas_repair::scrub` against every shard the
+  manifest references, mapping flagged shards back to file names.
+- A new background task (`scrub.rs`) runs it on an interval
+  (`ITSANAS_SCRUB_INTERVAL_SECS`, default 6h) and caches the result in
+  `AppState`; `GET /status` exposes it as `vault_health`, cleared on lock
+  (a locked vault reveals nothing, including this).
+- Both clients updated to match: `itsanas-gui` shows unhealthy files as a
+  warning (9 Rust tests, including a real-daemon round-trip of the new
+  field); `android/`'s `StatusResponse`/`VaultHealth` models and UI
+  updated too (2 new contract tests, `vault_health` defaults to `null`
+  so older/newer daemon-client pairs don't break each other).
+- `scripts/smoke-e2e.sh` gained 3 new real assertions: a corrupted file
+  gets detected and named within one scrub interval, and the report
+  disappears the moment the vault locks.
+- **Deliberately not done here**: actual recovery (`itsanas_repair::repair`)
+  isn't called anywhere yet — it needs a `MirrorSet` (peer addresses to
+  fetch a good copy from), and this daemon has no concept of network
+  peers at all (`itsanas-net` isn't wired in). Faking a peer list just to
+  call `repair` would be worse than being honest that recovery is still
+  M4's job (multi-device accounts — "who are my mirror peers" needs a
+  real answer, not an invented one). Detection today is still valuable:
+  a user at least learns a file needs attention.
+
 ## Next steps
 
 1. M2 (PR #5) and daemon/GUI/installer/Android/M3/test-automation (PR #6)
@@ -333,12 +363,9 @@ for the full table. New this round:
    Android SDK access to go from "compiles in principle, network-layer
    verified standalone" to "actually runs" — a real device/emulator run
    is the remaining gap, not a design blocker.
-3. `itsanas-daemon` doesn't call into `itsanas-repair` yet — the vault
-   currently has no mirror-peer configuration or scrub schedule of its
-   own. Wiring M3's mirroring/repair into the actual daemon (not just the
-   library + receipt scenario) is the next real integration step, likely
-   alongside M4 (accounts/quotas), since "who are my mirror peers" is a
-   multi-device/multi-account question.
+3. The other half of "wire M3 into the daemon" — actual mirroring/repair,
+   not just scrubbing — needs M4 (accounts/quotas) first, since that's
+   where "who are my mirror peers" gets a real answer.
 4. M7: Reed–Solomon erasure coding once the network reaches 4+ nodes,
    replacing `itsanas-repair`'s full-replication mirroring above that
    threshold (D6).

@@ -23,6 +23,14 @@ struct Status {
     has_account: bool,
     unlocked: bool,
     synced_folder: String,
+    #[serde(default)]
+    vault_health: Option<VaultHealth>,
+}
+
+#[derive(Deserialize, Default, Clone, PartialEq, Debug)]
+struct VaultHealth {
+    healthy_shards: u64,
+    unhealthy_files: Vec<String>,
 }
 
 #[derive(Deserialize, Clone, PartialEq, Debug)]
@@ -194,6 +202,20 @@ impl App {
             }
         });
         ui.separator();
+
+        if let Some(health) = &status.vault_health {
+            if !health.unhealthy_files.is_empty() {
+                ui.colored_label(
+                    egui::Color32::from_rgb(200, 60, 60),
+                    format!(
+                        "{} file(s) need attention (failed a background integrity check): {}",
+                        health.unhealthy_files.len(),
+                        health.unhealthy_files.join(", ")
+                    ),
+                );
+                ui.add_space(8.0);
+            }
+        }
 
         if self.last_files_poll.elapsed() >= FILES_POLL_INTERVAL {
             self.refresh_files();
@@ -397,6 +419,10 @@ mod tests {
         let status = app.status.expect("do_setup refreshes status");
         assert!(status.has_account);
         assert!(status.unlocked, "setup should leave the vault unlocked");
+        assert_eq!(
+            status.vault_health, None,
+            "no background scrub has completed yet right after setup"
+        );
     }
 
     #[test]

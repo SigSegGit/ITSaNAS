@@ -17,6 +17,7 @@ path = "src/main.rs"
 itsanas-crypto = { path = "../itsanas-crypto" }
 itsanas-chunking = { path = "../itsanas-chunking" }
 itsanas-storage = { path = "../itsanas-storage" }
+itsanas-repair = { path = "../itsanas-repair" }
 axum = "0.8"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "fs"] }
 serde = { version = "1", features = ["derive"] }

@@ -5,7 +5,7 @@ use tokio::sync::RwLock;
 
 use crate::account;
 use crate::error::DaemonError;
-use crate::vault::Vault;
+use crate::vault::{Vault, VaultHealth};
 
 /// Shared server state: the vault, and the master key while unlocked.
 ///
@@ -19,6 +19,11 @@ pub struct AppState {
     pub sync_dir: PathBuf,
     pub vault: Vault,
     master_key: RwLock<Option<[u8; 32]>>,
+    /// The most recent background scrub result (`scrub::run`), if any has
+    /// completed yet. `None` before the first scrub, or whenever the
+    /// vault is locked — a locked vault reveals nothing, including
+    /// whether any of its files are healthy.
+    vault_health: RwLock<Option<VaultHealth>>,
 }
 
 pub type SharedState = Arc<AppState>;
@@ -31,6 +36,7 @@ impl AppState {
             sync_dir,
             vault,
             master_key: RwLock::new(None),
+            vault_health: RwLock::new(None),
         })
     }
 
@@ -52,6 +58,9 @@ impl AppState {
 
     pub async fn lock(&self) {
         *self.master_key.write().await = None;
+        // A locked vault reveals nothing — including whether its files
+        // were healthy as of the last scrub.
+        *self.vault_health.write().await = None;
     }
 
     pub async fn is_unlocked(&self) -> bool {
@@ -60,5 +69,13 @@ impl AppState {
 
     pub async fn master_key(&self) -> Result<[u8; 32], DaemonError> {
         self.master_key.read().await.ok_or(DaemonError::Locked)
+    }
+
+    pub async fn vault_health(&self) -> Option<VaultHealth> {
+        self.vault_health.read().await.clone()
+    }
+
+    pub async fn set_vault_health(&self, health: VaultHealth) {
+        *self.vault_health.write().await = Some(health);
     }
 }
