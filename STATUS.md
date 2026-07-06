@@ -131,6 +131,20 @@ to the allowlist, sign once as a one-time exception, or leave this
 specific check red? It doesn't block merging either way — `cla-check`
 isn't a required status check, only `CI / ci` is.
 
+**Follow-up, confirmed on PR #7**: the owner asked to add the automation
+identity to the allowlist ("do the change to not need sign off"), done by
+adding `noreply@anthropic.com` to `allowlist:` (PR #6). It doesn't work.
+`contributor-assistant/github-action`'s `allowlist` matches only GitHub
+usernames/logins (per its own docs), never raw git commit-author emails —
+confirmed by PR #7 still failing with the exact same "have to sign"
+message even with the fix live on `main`. Reverted the ineffective email
+entry (a no-op entry that looks like it does something is worse than an
+honest comment explaining why it's red) — see `.github/workflows/cla.yml`.
+Net state: `cla-check` shows red on every PR from this automation
+identity, harmlessly (not a required check). A real fix — e.g. authoring
+commits under a real GitHub-linked identity — is an owner decision to
+make explicitly if wanted, not something to route around unilaterally.
+
 ## M2 — NAT traversal via a self-hosted relay: DONE (merged)
 
 Merged via [PR #5](https://github.com/SigSegGit/ITSaNAS/pull/5) into

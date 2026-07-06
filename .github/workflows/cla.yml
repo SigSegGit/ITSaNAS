@@ -25,7 +25,22 @@ jobs:
           path-to-document: "https://github.com/SigSegGit/ITSaNAS/blob/main/CLA.md"
           branch: "cla-signatures"
           # Owner decision: this project's commits are made by the owner's
-          # own Claude Code sessions under this fixed automation identity.
-          # Exempted explicitly, the same as the human owner, rather than
-          # requiring per-session CLA sign-off for the owner's own tooling.
-          allowlist: SigSegGit,noreply@anthropic.com
+          # own Claude Code sessions under a fixed automation identity
+          # (Claude <noreply@anthropic.com>), meant to be exempted from
+          # CLA sign-off the same way the owner's own SigSegGit account is
+          # exempted below.
+          #
+          # That doesn't actually work, confirmed on PR #7:
+          # contributor-assistant/github-action's `allowlist` matches only
+          # GitHub usernames/logins (per its own docs), never raw git
+          # commit-author emails — an email with no GitHub account behind
+          # it can never match, whatever's listed here. `noreply
+          # @anthropic.com` is left out rather than kept as a no-op entry
+          # that looks like it does something.
+          #
+          # Net effect: `cla-check` shows red on every PR from this
+          # automation identity. Harmless — it isn't a required status
+          # check, only `CI / ci` is — but a real fix (e.g. authoring
+          # commits under a real GitHub-linked identity) is an owner
+          # decision, not something to route around unilaterally.
+          allowlist: SigSegGit
