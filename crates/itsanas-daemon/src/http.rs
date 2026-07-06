@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::DaemonError;
 use crate::state::SharedState;
+use crate::vault::VaultHealth;
 
 pub fn router(state: SharedState) -> Router {
     Router::new()
@@ -38,6 +39,9 @@ struct StatusResponse {
     has_account: bool,
     unlocked: bool,
     synced_folder: String,
+    /// The most recent background scrub result (D7), if one has run yet.
+    /// Always `null` while locked — a locked vault reveals nothing.
+    vault_health: Option<VaultHealth>,
 }
 
 async fn status(State(state): State<SharedState>) -> impl IntoResponse {
@@ -45,6 +49,7 @@ async fn status(State(state): State<SharedState>) -> impl IntoResponse {
         has_account: state.has_account(),
         unlocked: state.is_unlocked().await,
         synced_folder: state.sync_dir.display().to_string(),
+        vault_health: state.vault_health().await,
     })
 }
 

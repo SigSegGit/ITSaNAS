@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use itsanas_daemon::{http, sync, AppState};
+use itsanas_daemon::{http, scrub, sync, AppState};
 
 const DEFAULT_PORT: u16 = 4279;
 
@@ -40,6 +40,7 @@ async fn main() {
         Arc::new(AppState::open(data_dir.clone(), sync_dir.clone()).expect("failed to open vault"));
 
     tokio::spawn(sync::run(state.clone(), sync_dir.clone()));
+    tokio::spawn(scrub::run(state.clone()));
 
     let app = http::router(state);
 

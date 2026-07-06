@@ -299,6 +299,26 @@ now — multi-device accounts are M4.
     `state.master_key().await` fails and it skips that tick) — a locked
     vault materializes nothing new to disk and uploads nothing, matching
     the "locked means locked" expectation the HTTP API already enforces.
+- **Background scrubbing** (`scrub.rs`): M3's D7 half wired into the
+  daemon. On a fixed interval (`ITSANAS_SCRUB_INTERVAL_SECS`, default 6
+  hours), calls `Vault::scrub` — which reuses `itsanas_repair::scrub`
+  rather than re-implementing shard classification, then maps flagged
+  shards back to the file name(s) that reference them — and caches the
+  result (`AppState::vault_health`) for `GET /status` to expose as
+  `vault_health`. Locking clears the cached health report the same way
+  it clears the master key: a locked vault reveals nothing, including
+  whether its files were healthy as of the last scrub.
+
+  Deliberately detection-only for now. `itsanas_repair::repair` needs a
+  `MirrorSet` — a list of peer addresses to fetch a good copy from — and
+  this daemon has no concept of network peers at all yet (`itsanas-net`
+  isn't wired in here; "who are my mirror peers" is a multi-device
+  accounts question, M4's job, not this one's). Inventing a throwaway
+  peer-configuration mechanism just to call `repair` would be worse than
+  being honest that recovery isn't wired in yet: surfacing real, accurate
+  health information today (so a user at least knows a file needs
+  attention) is useful on its own, and `repair` slots in cleanly once M4
+  gives this a real peer list to draw on.
 - **Default directories**: `ITSANAS_DATA_DIR` defaults to a proper
   per-user app-data directory (`%APPDATA%\itsanas` / `~/.config/itsanas`
   / `~/Library/Application Support/itsanas`, via the `dirs` crate) and

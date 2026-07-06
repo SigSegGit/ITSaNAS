@@ -20,13 +20,40 @@ class ContractTest {
 
     @Test
     fun `StatusResponse deserializes the daemon's actual field names`() {
-        val wire = """{"has_account":true,"unlocked":false,"synced_folder":"/home/alice/ITSaNAS"}"""
+        val wire =
+            """{"has_account":true,"unlocked":false,"synced_folder":"/home/alice/ITSaNAS","vault_health":null}"""
 
         val status = json.decodeFromString(StatusResponse.serializer(), wire)
 
         assertEquals(true, status.hasAccount)
         assertEquals(false, status.unlocked)
         assertEquals("/home/alice/ITSaNAS", status.syncedFolder)
+        assertEquals(null, status.vaultHealth)
+    }
+
+    @Test
+    fun `StatusResponse tolerates a response with no vault_health key at all`() {
+        // Defends against a daemon build old enough to predate this field -
+        // vaultHealth must default to null rather than failing to parse.
+        val wire = """{"has_account":true,"unlocked":true,"synced_folder":"/home/alice/ITSaNAS"}"""
+
+        val status = json.decodeFromString(StatusResponse.serializer(), wire)
+
+        assertEquals(null, status.vaultHealth)
+    }
+
+    @Test
+    fun `StatusResponse deserializes a populated vault_health exactly like the daemon sends it`() {
+        val wire =
+            """{"has_account":true,"unlocked":true,"synced_folder":"/home/alice/ITSaNAS",""" +
+                """"vault_health":{"healthy_shards":5,"unhealthy_files":["notes.txt","photo.jpg"]}}"""
+
+        val status = json.decodeFromString(StatusResponse.serializer(), wire)
+
+        val health = status.vaultHealth
+        checkNotNull(health)
+        assertEquals(5L, health.healthyShards)
+        assertEquals(listOf("notes.txt", "photo.jpg"), health.unhealthyFiles)
     }
 
     @Test
