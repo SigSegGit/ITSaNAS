@@ -18,3 +18,12 @@ eframe = "0.29"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 ureq = { version = "2", features = ["json"] }
+
+[dev-dependencies]
+# Tests boot the real itsanas-daemon router (not a mock) on an in-process
+# ephemeral port, for maximum fidelity against what the GUI actually talks
+# to in production.
+itsanas-daemon = { path = "../itsanas-daemon" }
+axum = "0.8"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tempfile = "3"

@@ -24,6 +24,8 @@ whatever address you point it at.
   and `UriRequestBody.kt` (streams an upload straight from a content
   `Uri` instead of buffering it into memory — matters since the daemon's
   own body-size limit is intentionally unbounded).
+- `logic-tests/`: a standalone (non-Android) Gradle project testing the
+  `network/` contract layer above — see "Testing" below.
 
 ## Building and running
 
@@ -45,20 +47,30 @@ downloads). Gradle 8.14.3 and JDK 21 are present here, so everything
 internet access, `./gradlew` will fetch the AGP + SDK components it needs
 on first run same as any Android project.
 
-**What actually was verified here**: Maven Central (as opposed to
-Google's repository) isn't blocked, so `network/Models.kt`,
-`DaemonApi.kt`, and `RetrofitClient.kt` — the part that has to match
-`itsanas-daemon`'s actual API shape byte-for-byte — were compiled
-standalone in a throwaway Kotlin/JVM Gradle project against the real
-Retrofit/OkHttp/kotlinx-serialization dependencies (no Android SDK
-needed for these three files; they don't reference any `android.*` API).
-That compile caught a real bug: the `kotlinx-serialization` Retrofit
-converter's package is `com.jakewharton.retrofit2.converter.kotlinx
-.serialization`, not `retrofit2.converter.kotlinx.serialization` as
-first written — fixed. `UriRequestBody.kt` and everything under
-`MainActivity.kt`/`Screens.kt` (Compose, `ContentResolver`, activity
-result contracts) does need the real Android SDK and remains unverified
-until built on a machine with SDK access — treat that part accordingly:
+**What actually is verified, permanently**: `logic-tests/` — a separate,
+standalone Gradle project (own `settings.gradle.kts`, no dependency on
+this `app` module or the Android Gradle Plugin) that compiles the *real*
+`network/Models.kt`, `DaemonApi.kt`, and `RetrofitClient.kt` — pointed at
+directly, not copies, via a custom `sourceSets` block, so it can't
+silently drift from what actually ships — and round-trips them against
+literal JSON shaped exactly like `itsanas-daemon`'s real responses. Only
+needs a JVM and Maven Central (not blocked here, unlike Google's repo),
+so run it any time with:
+
+```sh
+../../scripts/test-android-logic.sh
+```
+
+This is what caught a real bug during development: the
+`kotlinx-serialization` Retrofit converter's package is
+`com.jakewharton.retrofit2.converter.kotlinx.serialization`, not
+`retrofit2.converter.kotlinx.serialization` as first written — and it's
+what would catch the next one, e.g. a field renamed on one side of the
+API without the other being updated. `UriRequestBody.kt` and everything
+under `MainActivity.kt`/`Screens.kt` (Compose, `ContentResolver`,
+activity result contracts) does need the real Android SDK and remains
+unverified until built on a machine with SDK access — treat that part
+accordingly:
 
 ```sh
 cd android

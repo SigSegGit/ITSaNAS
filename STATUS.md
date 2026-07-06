@@ -272,12 +272,46 @@ M7) and the active half of D7 (scrubbing + repair) — see
   through a corrupt mirror to a healthy one, repair failing cleanly when
   no mirror has the shard), all passing; full `scripts/ci.sh` green.
 
+## Comprehensive test automation: DONE (on branch, not yet merged)
+
+Standing requirement going forward, not a one-time cleanup: `./scripts/ci.sh
+--full` is now the single command that runs every layer of testing this
+project has — see `TESTING.md`'s "Running everything with one command"
+for the full table. New this round:
+
+- **`scripts/smoke-e2e.sh`**: the manual end-to-end verification from the
+  daemon/GUI/testing round above (account isolation, stolen-vault-data
+  resistance, at-rest encryption, large-file integrity, folder sync both
+  directions, lock-state enforcement — 20 assertions total) turned into
+  a permanent script against real running daemon instances. Wired into
+  `scripts/ci.sh` by default (not gated behind `--full` — `curl`/`jq` are
+  ubiquitous enough not to need gating). Caught one real bug in itself on
+  first run (a missing `mkdir -p` before copying a "stolen" vault copy in
+  the test), fixed immediately.
+- **`itsanas-gui` logic tests**: `App`'s HTTP/state logic (`refresh_status`,
+  `do_setup`, `do_unlock`, `do_lock`, `refresh_files`) refactored apart
+  from `egui::Ui` rendering so it's unit-testable, then tested against a
+  *real* `itsanas-daemon` router booted in-process on an OS-assigned port
+  (not a mock) — 9 new tests covering every screen transition and error
+  path, part of `cargo test --workspace` with no extra flag needed.
+- **`android/logic-tests`**: a standalone Gradle project (its own
+  `settings.gradle.kts`, no Android Gradle Plugin dependency at all) that
+  compiles the actual production `Models.kt`/`DaemonApi.kt`/
+  `RetrofitClient.kt` — not copies — and round-trips them against literal
+  JSON shaped like the daemon's real responses, plus live round-trips
+  through a `MockWebServer`. Runs with nothing but a JVM and Maven
+  Central access, so it works in this sandbox despite Google's Maven
+  repo being blocked. 7 tests, `--full` only (needs `gradle`).
+- `scripts/ci.sh --full` also runs the Windows installer build
+  (`scripts/package-windows-installer.sh`) when `mingw-w64`/`nsis` are
+  present, auto-skipping gracefully otherwise.
+
 ## Next steps
 
 1. M2 (PR #5) is merged into `main` — done.
 2. Get `claude/daemon-and-clients` reviewed and merged (daemon, GUI,
    Windows installer, Android client scaffold, M3 mirroring/repair,
-   docs/testing).
+   comprehensive test automation, docs/testing).
 3. Android client (`android/`): needs an actual build on a machine with
    Android SDK access to go from "compiles in principle, network-layer
    verified standalone" to "actually runs" — a real device/emulator run

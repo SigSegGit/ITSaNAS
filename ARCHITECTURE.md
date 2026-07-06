@@ -335,6 +335,17 @@ Raspberry Pi–class NAS box is headless, so there's no desktop to put a
 GUI on; `itsanas-daemon` (which runs everywhere) is what actually matters
 there.
 
+**Testing**: `App`'s HTTP/state logic (`refresh_status`, `refresh_files`,
+`do_setup`, `do_unlock`, `do_lock`) is deliberately factored apart from
+the `egui::Ui`-rendering methods, so it's unit-testable on its own —
+`main.rs`'s `#[cfg(test)]` module boots a *real* `itsanas-daemon` router
+(via `itsanas-daemon` as a dev-dependency, bound to an OS-assigned
+loopback port on a background thread) rather than a mock, and drives
+every screen transition and action against it: no account, wrong
+password, correct password, lock/unlock, and the file list actually
+reflecting what was `PUT` into the vault. These run as part of `cargo
+test --workspace` / `scripts/ci.sh`, no extra flag needed.
+
 See `INSTALL.md` for the end-user-facing installation and account/key
 management instructions.
 
@@ -359,17 +370,26 @@ intentionally unbounded body size.
 repository (same policy that blocks `dl.google.com`), so the Android
 Gradle Plugin itself can't be resolved here — confirmed directly (`gradle
 tasks` fails on `com.android.application:8.5.2` plugin resolution, not
-just at a later SDK-download step). What *could* be verified: the API
-contract layer (`network/Models.kt`, `DaemonApi.kt`, `RetrofitClient.kt`)
-doesn't reference any Android API, so it was compiled standalone in a
-throwaway Kotlin/JVM Gradle project against real Retrofit/OkHttp/
-kotlinx-serialization dependencies from Maven Central (which isn't
-blocked). That caught a real bug — the kotlinx-serialization Retrofit
-converter's actual package is `com.jakewharton.retrofit2.converter
-.kotlinx.serialization`, not `retrofit2.converter.kotlinx.serialization`
-— fixed. The Compose UI and anything touching `android.*` APIs
-(`ContentResolver`, activity result contracts) remains unverified until
-built on a machine with real SDK access. See `android/README.md`.
+just at a later SDK-download step). The Compose UI and anything touching
+`android.*` APIs (`ContentResolver`, activity result contracts) remains
+unverified until built on a machine with real SDK access.
+
+**`android/logic-tests`**: the API contract layer (`network/Models.kt`,
+`DaemonApi.kt`, `RetrofitClient.kt`) doesn't reference any Android API,
+so rather than leaving that unverified too, it gets a permanent,
+standalone Gradle project — its own `settings.gradle.kts`, no dependency
+on `:app` or the Android Gradle Plugin at all — that compiles those exact
+production files (pointed at directly via a custom `sourceSets` block,
+not copies, so they can't silently drift) and round-trips them against
+literal JSON shaped exactly like `itsanas-daemon`'s real responses. Only
+needs a JVM and Maven Central access (not blocked here, unlike Google's
+repo), so it runs in this sandbox and in any CI environment via
+`scripts/test-android-logic.sh`. This is what caught a real bug during
+development — the kotlinx-serialization Retrofit converter's actual
+package is `com.jakewharton.retrofit2.converter.kotlinx.serialization`,
+not `retrofit2.converter.kotlinx.serialization` — and it's what would
+catch the next one, e.g. a field getting renamed on either side of the
+API without the other being updated to match. See `android/README.md`.
 
 ## Test mode & the receipt script
 

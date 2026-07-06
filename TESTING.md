@@ -1,7 +1,7 @@
 # Real-life testing: encryption, isolation, and file transfer
 
 Beyond the unit test suites (`cargo test` per crate) and `scripts/receipt.sh`
-(fault injection), the daemon + GUI were exercised end-to-end against a real
+(fault injection), the daemon + GUI are exercised end-to-end against a real
 running process and real files on disk — the two things that actually matter
 for "is this actually safe and does it actually work": can one user read
 another's files, and does a file survive the round trip unchanged. Two real
@@ -9,13 +9,22 @@ bugs were found this way (both fixed — see below) that no unit test caught,
 because both only show up when you look at what's actually written to disk
 or sent over the wire, not just at each function's return value in isolation.
 
-Reproduce any of this yourself with two `itsanas-daemon` instances pointed
-at separate data/sync directories and ports, e.g.:
+**This is no longer a manual exercise.** Everything below is now
+`scripts/smoke-e2e.sh` — a permanent, repeatable script that starts real
+daemon instances, drives them over HTTP, and asserts on both the responses
+and what actually lands on disk, failing loudly (and exit non-zero) the
+instant any of it regresses. It's part of `scripts/ci.sh`, so it runs on
+every commit — see "Running everything with one command" below for the
+full picture (this script plus GUI and Android test coverage). Run it on
+its own with:
 
 ```sh
-ITSANAS_DATA_DIR=/tmp/userA/data ITSANAS_SYNC_DIR=/tmp/userA/synced ITSANAS_PORT=4292 \
-  ./target/debug/itsanas-daemon &
+./scripts/smoke-e2e.sh
 ```
+
+The walkthroughs below are what that script actually does and why each
+check exists — read them for the reasoning; run the script for the
+up-to-date, enforced version of the same checks.
 
 ## 1. Two accounts can't see or unlock each other's vault
 
@@ -161,3 +170,45 @@ key. **Result: PASS.**
 | 3 | Nothing readable at rest without the key, including file names | PASS (after fixing a plaintext state-file leak) |
 | 4 | Large binary file round-trips byte-for-byte | PASS (after fixing axum's default body-size limit) |
 | 5 | Folder sync works both directions, respects lock state | PASS |
+
+All 20 assertions above are enforced automatically by
+`scripts/smoke-e2e.sh` on every commit (via `scripts/ci.sh`) — this table
+records what was found the first time; the script is what keeps it true.
+
+## Running everything with one command
+
+The standing bar for this project: nothing should ship where "did it
+actually work" depends on someone remembering to check by hand. Every
+layer below has automated coverage, and one command runs literally all of
+it:
+
+```sh
+./scripts/ci.sh --full
+```
+
+| Layer | What runs | Covers |
+|---|---|---|
+| Code | `cargo fmt --check`, `cargo clippy -D warnings`, `cargo build`, `cargo test --workspace` | Every crate's unit/integration tests, including `itsanas-gui`'s (see below) |
+| Fault injection | `scripts/receipt.sh` | Every named `FaultPoint` (storage corruption, network tamper/disconnect, unreachable mirrors) produces exactly the right error, plus a clean run |
+| Feature (daemon, end-to-end) | `scripts/smoke-e2e.sh` | Account isolation, stolen-vault-data resistance, at-rest encryption (content *and* file names), large binary file integrity, folder sync in both directions, lock-state enforcement — against real running daemon processes, not mocks |
+| GUI | `cargo test -p itsanas-gui` (part of `cargo test --workspace`) | Every screen transition (no daemon / no account / locked / unlocked) and every action (`do_setup`, `do_unlock`, `do_lock`) against a real in-process `itsanas-daemon` router — not a mock, and not the same process as smoke-e2e's, so a GUI-side regression can't hide behind the daemon's own tests passing |
+| Android | `scripts/test-android-logic.sh` (`--full` only; needs `gradle` + Maven Central) | The exact production `Models.kt`/`DaemonApi.kt`/`RetrofitClient.kt` — not copies — round-tripped against literal JSON shaped like the daemon's real responses, so a field rename on either side fails immediately instead of silently breaking on a real phone |
+| Windows installer | `scripts/package-windows-installer.sh` (`--full` only; needs `mingw-w64` + `nsis`) | Both binaries cross-compile and `makensis` produces a valid installer |
+| Infra/workflow | `.github/workflows/ci.yml`, `cla.yml` | CI itself runs `scripts/ci.sh`; CLA gating is exercised by every real PR |
+
+Plain `scripts/ci.sh` (no flag) runs the first three rows — everything
+that only needs the Rust toolchain plus `curl`/`jq` (both ubiquitous), so
+it's what every environment, including a bare CI runner, can always run.
+`--full` adds the rows that need extra tooling (`gradle`+network,
+`mingw-w64`+`nsis`), auto-skipping any of them that aren't installed
+rather than failing the whole run — so `--full` degrades gracefully on a
+machine that only has some of the extra tools, instead of being all-or-
+nothing.
+
+**The standard going forward**: new code in this repo should come with
+tests that exercise it at the layer where it actually runs — a new crate
+function gets a unit test, a new HTTP endpoint or cross-process behavior
+gets a `smoke-e2e.sh` (or receipt-mode) check, a new GUI action gets a
+test against a real in-process daemon the way `do_setup`/`do_unlock`/
+`do_lock` do. The goal is that `./scripts/ci.sh --full` passing is
+sufficient evidence the software works, not just that it compiles.

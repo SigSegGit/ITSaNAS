@@ -3179,9 +3179,13 @@ dependencies = [
 name = "itsanas-gui"
 version = "0.1.0"
 dependencies = [
+ "axum",
  "eframe",
+ "itsanas-daemon",
  "serde",
  "serde_json",
+ "tempfile",
+ "tokio",
  "ureq",
 ]
 
