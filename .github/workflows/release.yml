@@ -13,11 +13,22 @@ name: Release
 on:
   push:
     tags: ["v*"]
-  workflow_dispatch: {}
+  # Manual dispatch: with a `tag` input, publishes a full release and
+  # creates that tag server-side (needed because this project's tooling
+  # pushes branches through a proxy that rejects tag pushes); without
+  # one, it's a dry run that only uploads workflow artifacts.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to create (e.g. v0.1.0); leave empty for a dry run"
+        required: false
+        default: ""
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the release (and, on manual dispatch, its tag)
     steps:
       - uses: actions/checkout@v4
 
@@ -68,9 +79,13 @@ jobs:
             dist/*.tar.gz
 
       - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.tag != ''
         uses: softprops/action-gh-release@v2
         with:
+          # On a tag push, tag_name is empty and the action uses the
+          # pushed tag; on manual dispatch it creates the given tag at
+          # the dispatched commit.
+          tag_name: ${{ inputs.tag }}
           files: |
             dist/itsanas-installer.exe
             dist/*.tar.gz
