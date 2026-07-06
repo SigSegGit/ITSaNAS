@@ -350,6 +350,12 @@ removes the app itself but deliberately leaves the vault
 (`%APPDATA%\itsanas`) and the synced folder (`~/ITSaNAS`) untouched,
 matching what any real sync client's uninstaller does.
 
+The compiled `.exe` itself is published by `.github/workflows/release.yml`
+(tag push or manual dispatch) as a GitHub Release asset — that's the
+piece that makes "download and double-click" literally true for an end
+user, as opposed to `scripts/ci.sh --full` building the installer only
+as a build-health check and discarding the output.
+
 `itsanas-gui` isn't built for `aarch64` in `scripts/release.sh` — a
 Raspberry Pi–class NAS box is headless, so there's no desktop to put a
 GUI on; `itsanas-daemon` (which runs everywhere) is what actually matters

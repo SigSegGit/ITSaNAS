@@ -372,6 +372,26 @@ the nearest prior same-OS cache as a base for incremental compilation
 instead of starting from zero. Verified: PR #10's own CI run restored
 from cache (30s) and finished in ~2 min, back to baseline.
 
+## Windows installer had no real download path: DONE (merged)
+
+The owner pointed out the install process wasn't actually usable:
+`INSTALL.md` said "download `itsanas-installer.exe`", but that file never
+existed anywhere a user could reach it. `packaging/windows/installer.nsi`
+is NSIS *source* — it has to be compiled — and the compiled `.exe` only
+ever existed transiently inside `scripts/ci.sh --full`'s own `dist/`
+directory as a build-health check, then got discarded. There was no
+release, no artifact, nothing to click. Fixed with
+`.github/workflows/release.yml` (tag push `v*`, or manual dispatch):
+builds the Windows installer plus Linux/aarch64 binaries
+(`scripts/release.sh`, Standard B3) and publishes them as GitHub Release
+assets — that's what makes "download and double-click" literally true.
+`INSTALL.md`/`ARCHITECTURE.md` updated to point at the Releases page and
+explain the `.nsi`-is-source-not-installer confusion directly, since
+that's exactly what tripped up a real reader. Verified locally in this
+environment: `mingw-w64` + `nsis` are both present here, and
+`scripts/package-windows-installer.sh` produces a real 16 MB
+`itsanas-installer.exe` end-to-end.
+
 ## Next steps
 
 1. M2 (PR #5) and daemon/GUI/installer/Android/M3/test-automation (PR #6)

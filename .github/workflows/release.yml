@@ -1,0 +1,77 @@
+name: Release
+
+# Builds the single-click Windows installer (and the Linux/aarch64
+# binaries from scripts/release.sh, per Standard B3) and publishes them
+# as downloadable assets on a GitHub Release.
+#
+# Without this workflow, "download itsanas-installer.exe" (INSTALL.md's
+# first step) had nowhere to point: the .nsi file is NSIS *source*, not
+# an installer, and the .exe it compiles to only ever existed transiently
+# inside scripts/ci.sh --full's own dist/ directory. This workflow is
+# what actually produces a file a Windows user can download and
+# double-click, with nothing but a web browser.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        run: |
+          rustup update stable
+          rustup default stable
+          rustup target add x86_64-pc-windows-gnu aarch64-unknown-linux-gnu
+
+      - name: Install cross-compilers and NSIS
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mingw-w64 gcc-aarch64-linux-gnu nsis
+
+      - name: Cache cargo registry and build output
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-release-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-release-cargo-
+            ${{ runner.os }}-cargo-
+
+      - name: Build Windows installer
+        run: ./scripts/package-windows-installer.sh
+
+      - name: Build Linux/aarch64 release binaries
+        run: ./scripts/release.sh
+
+      - name: Package Linux/aarch64 binaries as archives
+        run: |
+          cd dist
+          for d in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu; do
+            if [ -d "$d" ]; then
+              tar czf "itsanas-${d}.tar.gz" -C "$d" .
+            fi
+          done
+
+      - name: Upload build artifacts (always, even outside a tag push)
+        uses: actions/upload-artifact@v4
+        with:
+          name: itsanas-release-binaries
+          path: |
+            dist/itsanas-installer.exe
+            dist/*.tar.gz
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/itsanas-installer.exe
+            dist/*.tar.gz
+          generate_release_notes: true
