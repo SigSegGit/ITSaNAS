@@ -19,6 +19,10 @@ mod relay;
 pub use connectivity::ConnectivityReport;
 pub use error::NetError;
 pub use invite::Invite;
+// Re-exported rather than leaving callers to depend on `iroh` directly for
+// it: `Node::addr()` returns it and `get_remote`/`put_remote` take it, so
+// it's already part of this crate's public API surface either way.
+pub use iroh::EndpointAddr;
 pub use node::Node;
 pub use protocol::ALPN;
 pub use relay::RelayPolicy;

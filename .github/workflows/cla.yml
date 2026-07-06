@@ -24,4 +24,8 @@ jobs:
           path-to-signatures: "cla/signatures.json"
           path-to-document: "https://github.com/SigSegGit/ITSaNAS/blob/main/CLA.md"
           branch: "cla-signatures"
-          allowlist: SigSegGit
+          # Owner decision: this project's commits are made by the owner's
+          # own Claude Code sessions under this fixed automation identity.
+          # Exempted explicitly, the same as the human owner, rather than
+          # requiring per-session CLA sign-off for the owner's own tooling.
+          allowlist: SigSegGit,noreply@anthropic.com

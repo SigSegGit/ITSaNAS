@@ -20,5 +20,6 @@ itsanas-crypto = { path = "../itsanas-crypto" }
 itsanas-chunking = { path = "../itsanas-chunking" }
 itsanas-storage = { path = "../itsanas-storage", features = ["test-mode"] }
 itsanas-net = { path = "../itsanas-net", features = ["test-mode"] }
+itsanas-repair = { path = "../itsanas-repair", features = ["test-mode"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 tempfile = "3"

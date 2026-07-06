@@ -131,10 +131,10 @@ to the allowlist, sign once as a one-time exception, or leave this
 specific check red? It doesn't block merging either way — `cla-check`
 isn't a required status check, only `CI / ci` is.
 
-## M2 — NAT traversal via a self-hosted relay: DONE (on branch, not yet
-merged)
+## M2 — NAT traversal via a self-hosted relay: DONE (merged)
 
-On branch `claude/m2-relay-nat-traversal`. Implements D4 (never fall back
+Merged via [PR #5](https://github.com/SigSegGit/ITSaNAS/pull/5) into
+`main` (`f510649`). Implements D4 (never fall back
 to iroh's public relay infra), D5 (self-hosted relay), D12 (invite-only
 join), and D13 (CGNAT self-test) — see `ARCHITECTURE.md`'s expanded
 `itsanas-net` section for full design.
@@ -177,13 +177,151 @@ join), and D13 (CGNAT self-test) — see `ARCHITECTURE.md`'s expanded
 24 new/changed tests across `itsanas-net`, all passing, `scripts/ci.sh`
 green end-to-end.
 
+## itsanas-daemon, itsanas-gui, Windows installer: DONE (on branch
+`claude/daemon-and-clients`, not yet merged)
+
+Deliberate reprioritization at the owner's direction: rather than
+continuing straight to M3 (mirroring/repair) after M2, this branch builds
+the local daemon + desktop client stack M3's own design depends on anyway
+(D9), since tangible, runnable Windows/Android clients were asked for
+explicitly. M3 is deferred, not abandoned — see "Next steps" below.
+
+- **`itsanas-daemon`**: single-user password-derived account (D10, Argon2id
+  + a verification tag so a wrong password fails cleanly), an encrypted
+  per-file vault on top of `itsanas-storage`/`itsanas-chunking` (manifest
+  encrypted at rest — file names included), and a local-only (`127.0.0.1`)
+  HTTP API: setup/unlock/lock, list/get/put/delete files.
+- **Folder sync engine** (`sync.rs`): watches a real local folder
+  (`notify` crate) and mirrors it bidirectionally with the vault, plus a
+  poll fallback for API-driven changes the watcher can't see — this is
+  what makes drag-and-drop/copy/paste/open through the OS work
+  transparently, the explicit bar the owner set ("like Google Drive").
+  Deliberately a mirrored folder, not a FUSE/virtual-filesystem mount —
+  matches the project's own non-goals list.
+- **`itsanas-gui`**: `eframe`/`egui` desktop companion app — account
+  setup/unlock, shows the synced folder location, live file list. Launches
+  the daemon itself if it isn't already running.
+- **Windows installer** (`packaging/windows/installer.nsi` +
+  `scripts/package-windows-installer.sh`): single-click, no admin/UAC
+  prompt (per-user install under `%LOCALAPPDATA%`), Start Menu + Desktop
+  shortcuts, launch-at-login. Built and verified to produce a valid PE
+  installer in this environment (can't be run interactively here — no
+  Windows machine in this sandbox — but both bundled binaries
+  cross-compile and the installer builds cleanly via `makensis`).
+- **Android client** (`android/`): a genuinely thin Kotlin/Compose client
+  over `itsanas-daemon`'s HTTP API (D9, min SDK 29) — Retrofit + OkHttp +
+  kotlinx-serialization, account setup/unlock, file list with
+  upload/download/delete (streamed via a content `Uri`, not buffered, to
+  match the daemon's unbounded body size). Unlike `itsanas-gui` it
+  doesn't run a daemon or attempt a folder mirror — the user configures a
+  base URL once, since the daemon only binds to `127.0.0.1` and reaching
+  it from a phone always goes through something else (LAN/Tailscale/SSH
+  tunnel). Full Gradle build is genuinely blocked in this sandbox
+  (confirmed directly: `gradle tasks` fails resolving the Android Gradle
+  Plugin itself against Google's Maven repo, the same block that affects
+  `dl.google.com`) — but the API contract layer (`Models.kt`,
+  `DaemonApi.kt`, `RetrofitClient.kt`) doesn't touch any Android API, so
+  it was compiled standalone against real dependencies from Maven Central
+  (not blocked), catching and fixing one real bug (wrong package for the
+  kotlinx-serialization Retrofit converter). The Compose UI remains
+  unverified until built on a machine with real SDK access — see
+  `android/README.md`.
+- **Real-life testing** (`TESTING.md`): live multi-account isolation,
+  stolen-vault-data, at-rest-encryption, and large-binary-file-integrity
+  testing against running daemon instances (not just unit tests). Found
+  and fixed two real bugs this way:
+  - the sync engine's state sidecar was plaintext JSON recording file
+    names, leaking exactly what the encrypted manifest is designed to
+    hide — now encrypted with the master key like the manifest is.
+  - axum's default 2 MiB body limit silently rejected any upload bigger
+    than that — disabled for this loopback-only API.
+- Also switched default data/sync directories from CWD-relative paths to
+  proper per-user locations (`dirs` crate) — a real installed app has no
+  reliable working directory, and `Program Files` isn't user-writable.
+
+## M3 — mirroring, scrubbing, repair: DONE (on branch, not yet merged)
+
+Still on branch `claude/daemon-and-clients`. Implements D6's mirroring
+policy (full replication below the N≥4 erasure-coding threshold, which is
+M7) and the active half of D7 (scrubbing + repair) — see
+`ARCHITECTURE.md`'s new `itsanas-repair` section for full design.
+
+- **`scrub`**: re-verifies a set of shard ids against a `StorageRoot`,
+  classifying each healthy/corrupt/missing — reuses `StorageRoot::get`'s
+  existing verify-on-read rather than re-implementing hash checking.
+- **`MirrorSet`/`mirror_shard`**: pushes a shard to every peer in a
+  caller-provided mirror set, tolerating individual peer failures (D7
+  applies to mirrors too).
+- **`repair`**: restores a shard from the first mirror in the set with a
+  valid copy, falling through corrupt or unreachable candidates —
+  `Node::get_remote`'s existing re-verification means a lying mirror's
+  response is already rejected before `repair` sees it.
+- **New fault point**: `repair-all-mirrors-unreachable`, wired into
+  `repair`'s own peer loop (not the storage/network layer, which the
+  existing 4 fault points already cover) and into the receipt-runner's
+  scenario as a new M3 step. All 5 fault points plus the clean run pass
+  via `scripts/receipt.sh`.
+- **Found and fixed a real gap while wiring this up**: `itsanas-net`
+  didn't re-export `EndpointAddr` even though it's already part of its
+  public API (`Node::addr()` returns it, `get_remote`/`put_remote` take
+  it) — any downstream crate naming the type had to add `iroh` as its
+  own direct dependency just to spell it. Fixed by re-exporting it from
+  `itsanas-net` directly.
+- 5 new unit tests in `itsanas-repair` (mirroring to multiple peers,
+  partial-failure reporting, scrub classification, repair falling
+  through a corrupt mirror to a healthy one, repair failing cleanly when
+  no mirror has the shard), all passing; full `scripts/ci.sh` green.
+
+## Comprehensive test automation: DONE (on branch, not yet merged)
+
+Standing requirement going forward, not a one-time cleanup: `./scripts/ci.sh
+--full` is now the single command that runs every layer of testing this
+project has — see `TESTING.md`'s "Running everything with one command"
+for the full table. New this round:
+
+- **`scripts/smoke-e2e.sh`**: the manual end-to-end verification from the
+  daemon/GUI/testing round above (account isolation, stolen-vault-data
+  resistance, at-rest encryption, large-file integrity, folder sync both
+  directions, lock-state enforcement — 20 assertions total) turned into
+  a permanent script against real running daemon instances. Wired into
+  `scripts/ci.sh` by default (not gated behind `--full` — `curl`/`jq` are
+  ubiquitous enough not to need gating). Caught one real bug in itself on
+  first run (a missing `mkdir -p` before copying a "stolen" vault copy in
+  the test), fixed immediately.
+- **`itsanas-gui` logic tests**: `App`'s HTTP/state logic (`refresh_status`,
+  `do_setup`, `do_unlock`, `do_lock`, `refresh_files`) refactored apart
+  from `egui::Ui` rendering so it's unit-testable, then tested against a
+  *real* `itsanas-daemon` router booted in-process on an OS-assigned port
+  (not a mock) — 9 new tests covering every screen transition and error
+  path, part of `cargo test --workspace` with no extra flag needed.
+- **`android/logic-tests`**: a standalone Gradle project (its own
+  `settings.gradle.kts`, no Android Gradle Plugin dependency at all) that
+  compiles the actual production `Models.kt`/`DaemonApi.kt`/
+  `RetrofitClient.kt` — not copies — and round-trips them against literal
+  JSON shaped like the daemon's real responses, plus live round-trips
+  through a `MockWebServer`. Runs with nothing but a JVM and Maven
+  Central access, so it works in this sandbox despite Google's Maven
+  repo being blocked. 7 tests, `--full` only (needs `gradle`).
+- `scripts/ci.sh --full` also runs the Windows installer build
+  (`scripts/package-windows-installer.sh`) when `mingw-w64`/`nsis` are
+  present, auto-skipping gracefully otherwise.
+
 ## Next steps
 
-1. Get the M2 branch reviewed and merged. Confirm on this PR (opened after
-   PR #4 merged) that `cla-check` genuinely passes now, not via the
-   lock-only shortcut.
-2. M3: mirroring + repair + scrubbing, hardened against hostile storage
-   backends (D7) — new logic in `itsanas-repair`, reusing
-   `itsanas-storage`'s write-then-verify-readback and
-   `itsanas-chunking`'s verify-on-read, plus new fault points for the
-   receipt script.
+1. M2 (PR #5) is merged into `main` — done.
+2. Get `claude/daemon-and-clients` reviewed and merged (daemon, GUI,
+   Windows installer, Android client scaffold, M3 mirroring/repair,
+   comprehensive test automation, docs/testing).
+3. Android client (`android/`): needs an actual build on a machine with
+   Android SDK access to go from "compiles in principle, network-layer
+   verified standalone" to "actually runs" — a real device/emulator run
+   is the remaining gap, not a design blocker.
+4. `itsanas-daemon` doesn't call into `itsanas-repair` yet — the vault
+   currently has no mirror-peer configuration or scrub schedule of its
+   own. Wiring M3's mirroring/repair into the actual daemon (not just the
+   library + receipt scenario) is the next real integration step, likely
+   alongside M4 (accounts/quotas), since "who are my mirror peers" is a
+   multi-device/multi-account question.
+5. M7: Reed–Solomon erasure coding once the network reaches 4+ nodes,
+   replacing `itsanas-repair`'s full-replication mirroring above that
+   threshold (D6).

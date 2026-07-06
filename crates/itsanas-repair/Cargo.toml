@@ -4,9 +4,21 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Mirroring, erasure coding, scrubbing, and repair for ITSaNAS (placeholder)"
+description = "Mirroring, scrubbing, and repair for ITSaNAS (M3: mirroring below 4 nodes; erasure coding is M7)"
 
 [lints]
 workspace = true
 
 [dependencies]
+itsanas-chunking = { path = "../itsanas-chunking" }
+itsanas-storage = { path = "../itsanas-storage" }
+itsanas-net = { path = "../itsanas-net" }
+thiserror = "1"
+itsanas-testkit = { path = "../itsanas-testkit", optional = true }
+
+[features]
+test-mode = ["dep:itsanas-testkit", "itsanas-net/test-mode"]
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

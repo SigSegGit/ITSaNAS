@@ -1,5 +1,5 @@
 # itsanas-repair
 
-Mirroring, Reed-Solomon erasure coding, scrubbing, and repair (D6, D7).
-Placeholder until M3 (mirroring/scrubbing) and M7 (erasure coding) — see
-`ARCHITECTURE.md` at the repo root.
+Mirroring, scrubbing, and repair (D6, D7). Reed-Solomon erasure coding
+(D6, N≥4) is still a placeholder until M7 — see `ARCHITECTURE.md` at the
+repo root for the full design.

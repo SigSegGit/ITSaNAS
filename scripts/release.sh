@@ -17,10 +17,27 @@ TARGETS=(
     "x86_64-pc-windows-gnu"
 )
 
-# Binaries this workspace produces once their crates gain a `main.rs`
-# (itsanas-cli, itsanas-daemon are placeholders as of M0 — this list will
-# grow as those crates gain binary entry points).
-BINARIES=()
+# itsanas-daemon is headless and runs everywhere, including the Raspberry Pi
+# NAS box itself. itsanas-gui is the desktop companion app (Windows/Linux
+# desktop) and isn't built for aarch64 — a Pi-based NAS has no screen to
+# put it on.
+package_binaries_for() {
+    local target="$1"
+    local bins=("itsanas-daemon")
+    if [[ "${target}" != aarch64-* ]]; then
+        bins+=("itsanas-gui")
+    fi
+
+    local out_dir="dist/${target}"
+    mkdir -p "${out_dir}"
+    for bin in "${bins[@]}"; do
+        local src="target/${target}/release/${bin}"
+        [[ "${target}" == *windows* ]] && src="${src}.exe"
+        if [ -f "${src}" ]; then
+            cp "${src}" "${out_dir}/"
+        fi
+    done
+}
 
 rm -rf dist
 mkdir -p dist
@@ -30,21 +47,13 @@ for target in "${TARGETS[@]}"; do
     rustup target add "${target}"
 
     echo "==> building for ${target}"
-    cargo build --workspace --release --target "${target}"
-
-    if [ "${#BINARIES[@]}" -eq 0 ]; then
-        continue
+    if [[ "${target}" == aarch64-* ]]; then
+        cargo build --workspace --exclude itsanas-gui --release --target "${target}"
+    else
+        cargo build --workspace --release --target "${target}"
     fi
 
-    out_dir="dist/${target}"
-    mkdir -p "${out_dir}"
-    for bin in "${BINARIES[@]}"; do
-        src="target/${target}/release/${bin}"
-        [[ "${target}" == *windows* ]] && src="${src}.exe"
-        if [ -f "${src}" ]; then
-            cp "${src}" "${out_dir}/"
-        fi
-    done
+    package_binaries_for "${target}"
 done
 
-echo "==> release artifacts in dist/ (empty until itsanas-cli/itsanas-daemon gain binaries)"
+echo "==> release artifacts in dist/"

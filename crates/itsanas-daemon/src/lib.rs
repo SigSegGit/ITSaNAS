@@ -1,14 +1,19 @@
-//! Background daemon: ties `itsanas-storage`, `itsanas-net`,
-//! `itsanas-repair`, and `itsanas-quota` together into the long-running
-//! service each node runs.
+//! Background daemon: exposes the local, authenticated HTTP API that
+//! `itsanas-gui` and the Android client (D9) talk to.
 //!
-//! Exposes the authenticated local API that `itsanas-cli` and the Android
-//! thin client (D9) talk to; the daemon itself is reachable remotely via the
-//! `itsanas-net` relay/public endpoint.
-//!
-//! Resource discipline is a hard requirement: idling must be cheap, and
-//! background repair/sync activity must respect configurable CPU, RAM, disk
-//! I/O, and bandwidth caps.
-//!
-//! Placeholder crate: no implementation yet. Real work starts once
-//! `itsanas-storage` and `itsanas-net` exist (M1+).
+//! Ties `itsanas-crypto`, `itsanas-chunking`, and `itsanas-storage` into a
+//! single-user encrypted vault ([`vault::Vault`]) behind a password-derived
+//! master key ([`account`]). Peer-to-peer sync (`itsanas-net`) and
+//! multi-device accounts (M4) are not wired in yet — this milestone is the
+//! local vault + API surface both clients need to exist at all.
+
+mod account;
+mod error;
+mod hex;
+pub mod http;
+mod state;
+pub mod sync;
+mod vault;
+
+pub use error::DaemonError;
+pub use state::AppState;
