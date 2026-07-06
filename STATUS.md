@@ -325,12 +325,10 @@ for the full table. New this round:
   (`scripts/package-windows-installer.sh`) when `mingw-w64`/`nsis` are
   present, auto-skipping gracefully otherwise.
 
-## Background scrubbing wired into the daemon: DONE (on branch, not yet
-merged)
+## Background scrubbing wired into the daemon: DONE (merged, PR #9)
 
-Still on branch `claude/daemon-and-clients`. The first half of "wire M3
-into the daemon" — see `ARCHITECTURE.md`'s expanded `itsanas-daemon`
-section for full design.
+The first half of "wire M3 into the daemon" — see `ARCHITECTURE.md`'s
+expanded `itsanas-daemon` section for full design.
 
 - `Vault::scrub` reuses `itsanas_repair::scrub` against every shard the
   manifest references, mapping flagged shards back to file names.
@@ -354,6 +352,25 @@ section for full design.
   M4's job (multi-device accounts — "who are my mirror peers" needs a
   real answer, not an invented one). Detection today is still valuable:
   a user at least learns a file needs attention.
+
+## CI cache regression after PR #9: DONE (merged, PR #10)
+
+After PR #9 added `itsanas-repair` (and transitively `iroh`, via
+`itsanas-net`) as a dependency of `itsanas-daemon`/`itsanas-gui`,
+`CI / ci` runtime jumped from the usual ~2 min to ~7 min on both the PR
+run and the following `main` run. Root cause: the cache step's key is an
+exact hash of `Cargo.lock` with no fallback, so the changed lockfile was
+a hard miss both times, forcing a full cold build of the now-heavier
+dependency graph (confirmed via each job's own step timings — the
+`Cache` step completed in 0s on both slow runs, versus ~30s on a real
+restore). Not the Node 20 Actions-runner deprecation some might expect
+from the timing coincidence — that warning only ever shows up in the
+Node-based `cla-check` job, never in `ci`, which only runs
+`rustup`/`cargo`. Fixed by adding a `restore-keys` prefix fallback to
+`.github/workflows/ci.yml`'s cache step, so a `Cargo.lock` change reuses
+the nearest prior same-OS cache as a base for incremental compilation
+instead of starting from zero. Verified: PR #10's own CI run restored
+from cache (30s) and finished in ~2 min, back to baseline.
 
 ## Next steps
 
