@@ -10,6 +10,10 @@ Every user keeps a full local copy of their own data: the network provides
 off-site redundancy and multi-device access, not primary storage. Day-to-day
 file access is local-first.
 
+**New here?** [`docs/OVERVIEW.md`](docs/OVERVIEW.md) is a visual tour —
+functional diagrams of what the software does and how it's tested,
+written for any reader, technical or not.
+
 ## Installing
 
 See [`INSTALL.md`](INSTALL.md) for the single-click Windows installer, and
