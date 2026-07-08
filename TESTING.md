@@ -226,13 +226,34 @@ user's machine — the code had simply never been executed on Windows).
 Anything removed from this list must be removed by *adding the test*,
 not by deleting the bullet.
 
-- **The GUI window on real Windows.** `itsanas-gui`'s screen transitions
-  and actions are tested against a real in-process daemon, and the
-  daemon side is e2e-tested as a Windows binary — but actual window
-  creation (eframe/wgpu on a real Windows display driver) has no
-  automated coverage; Wine in CI has no display. Regression here would
-  look like: binary starts, no window appears. Mitigation: manual check
-  on a real Windows machine at each release.
+- **The GUI window on real Windows — tried tonight, inconclusive by
+  design, don't attempt to "fix" this without a real Windows machine.**
+  `itsanas-gui`'s screen transitions and actions are tested against a
+  real in-process daemon, and the daemon side is e2e-tested as a
+  Windows binary — but actual window creation has no automated
+  coverage. Tried running the real Windows GUI binary under
+  `xvfb-run wine` tonight: it crashes 3/3 times, deterministically, at
+  the identical location — `winit::platform_impl::windows::event_loop::
+  EventLoop::run_on_demand` → `eframe::native::glow_integration::
+  GlowWinitApp::resumed` → `Instant - Duration` underflow
+  (`std::time.rs:445`), on the very first event-loop resume. That's
+  eframe 0.29.1 / winit 0.30.13 (current pins; no newer 0.29.x patch
+  exists, and jumping to eframe 0.30+ is a real API migration this
+  environment can't visually verify, so left un-bumped rather than
+  guessed at).
+  **Conclusion: this is a Wine+Xvfb test-environment artifact, not a
+  real product bug** — the owner has directly observed `itsanas-gui`
+  running on their actual Windows machine (that's how the earlier
+  os-error-5 sync failures were even visible to them as a running app
+  with silent retries, not a crash). The deterministic 3/3 repro rules
+  out flakiness, but the panic is in event-loop *resume* scheduling
+  that a headless Xvfb display with no compositor/vsync signal very
+  plausibly drives down a code path real Windows never takes on first
+  launch. Recorded rather than "fixed blind": don't bump eframe/winit
+  to chase this without being able to see a real window afterward.
+  Regression here would still look like: binary starts, no window
+  appears. Mitigation unchanged: manual check on a real Windows machine
+  at each release remains the only way to verify this layer.
 - **The Android APK is never compiled in CI.** The network-contract
   logic layer (exact production `Models.kt`/`DaemonApi.kt`) runs under
   plain gradle, but the full Compose app needs the Android SDK, which
