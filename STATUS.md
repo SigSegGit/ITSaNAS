@@ -489,6 +489,48 @@ valid name instead of reproducing the scenario. That assertion is now
 native-only with a comment explaining why, rather than a flaky Wine
 assertion or a deleted test.
 
+## Overnight autonomous session summary (2026-07-08)
+
+Working unsupervised overnight per the owner's instruction ("iterate to
+fix and test the Windows app, or advance the roadmap, autonomously,
+while I sleep"). Four things landed on `main`, all verified by
+`./scripts/ci.sh --full` before each push:
+
+1. **Real bug found and fixed**: the sync engine silently dropped any
+   file whose name it couldn't read, forever, with zero error anywhere
+   — same failure shape as the earlier os-error-5 bug. Now tracked as
+   `SyncIssue`s, surfaced through `/status`, shown as a red banner in
+   `itsanas-gui`.
+2. **New coverage**: accented/non-ASCII file names (the owner's own
+   machine is French-locale Windows) tested end-to-end on both the
+   folder-drop and API paths, against the real Windows daemon under
+   Wine.
+3. **The installer itself is now tested, not just built**: silently
+   installs the real `.exe` into a fresh Wine prefix and verifies the
+   binaries, the autostart/uninstall registry entries, and that the
+   installed daemon actually answers HTTP.
+4. **One finding investigated and correctly *not* acted on**: the
+   Windows GUI binary crashes 3/3 times under `wine`+`Xvfb` (deep in
+   winit's event-loop resume handling). Concluded this is a test-
+   environment artifact rather than a real product bug — the owner has
+   directly observed `itsanas-gui` running on their actual machine
+   already — and documented the full reasoning in TESTING.md rather
+   than guessing at a dependency bump with no way to visually confirm
+   it fixed anything real. **Worth a 10-second glance next time the app
+   is open** — not urgent, just worth confirming the window still comes
+   up clean — but not something requiring action otherwise.
+
+Two infrastructure fixes needed along the way, both now baked into the
+test scripts: Wine's Unix-to-UTF-16 path translation depends on the
+process locale (fixed by pinning `LC_ALL=C.UTF-8`), and running the
+64-bit `itsanas-*.exe` binaries plus the 32-bit NSIS installer in the
+same Wine prefix needs both the `wine64` and `wine32:i386` packages,
+not just `wine` (Ubuntu's plain `wine` package alone creates a
+32-bit-only prefix that can't run the 64-bit binaries at all).
+
+`release/v0.1.0` was fast-forwarded to pick up all of the above in a
+freshly built installer.
+
 ## Next steps
 
 1. M2 (PR #5) and daemon/GUI/installer/Android/M3/test-automation (PR #6)
