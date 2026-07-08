@@ -196,6 +196,7 @@ it:
 | Windows installer | `scripts/package-windows-installer.sh` (`--full` only; needs `mingw-w64` + `nsis`) | Both binaries cross-compile and `makensis` produces a valid installer |
 | Windows behavior | `scripts/test-windows.sh` (`--full` only; needs `mingw-w64` + `wine` — also runs in GitHub CI on every commit) | The fs-heavy crates (`itsanas-storage`, `itsanas-chunking`, `itsanas-crypto`) tested as **real Windows binaries** under Wine. Exists because the very first real Windows install failed every shard write with "Access denied" (os error 5): `FlushFileBuffers` refuses read-only handles on Windows, while `fsync` on Linux accepts them — a class of bug no amount of Linux-side testing can see. Under Wine the buggy code failed 9 of 12 storage tests and the fixed code passes all 12, so this layer demonstrably reproduces the real failure |
 | Windows e2e | `scripts/smoke-e2e-windows.sh` (`--full` only; needs `mingw-w64` + `wine` — also runs in GitHub CI on every commit) | The **entire smoke-e2e suite** (all 25 assertions: accounts, vault isolation, stolen-data resistance, at-rest encryption, binary round-trip, folder sync both directions, scrub, lock enforcement) against the **release Windows daemon binary** under Wine — the same profile the shipped installer contains. Note: the script works around an Ubuntu wine 9.0 packaging bug (wine's own PE `user32.dll` needs a `zlib1.dll` the loader can't find; the daemon pulls user32/crypt32 in via cert-store and known-folder APIs, so without the workaround it can't even start) |
+| Windows installer e2e | `scripts/test-windows-installer.sh` (`--full` only; needs `mingw-w64`, `nsis`, and both `wine32:i386` + `wine64` — also runs in GitHub CI on every commit) | Silently installs the **real NSIS installer** (`wine dist/itsanas-installer.exe /S`) into a fresh Wine prefix and asserts what a user actually gets: both binaries on disk, the autostart and uninstall registry entries, and — the part that matters — that the installed `itsanas-daemon.exe` actually runs and answers HTTP. Building the installer only proved `makensis` accepted the script; nothing before this ran what it installs. Needs a genuine win64 Wine prefix (the `wine64` package, not just `wine`) because the 64-bit `itsanas-*.exe` binaries fail with "Bad EXE format" under Ubuntu's default 32-bit-only prefix, and needs `wine32:i386` because the installer itself is a 32-bit PE requiring Wow64 — both found by hitting the failure first |
 | Infra/workflow | `.github/workflows/ci.yml`, `cla.yml` | CI itself runs `scripts/ci.sh`; CLA gating is exercised by every real PR |
 
 Plain `scripts/ci.sh` (no flag) runs the first three rows — everything
@@ -232,10 +233,6 @@ not by deleting the bullet.
   automated coverage; Wine in CI has no display. Regression here would
   look like: binary starts, no window appears. Mitigation: manual check
   on a real Windows machine at each release.
-- **The NSIS installer is built but never executed.** CI proves
-  `makensis` produces an installer; nothing automatically installs it
-  and runs what it installed. Silent-install-under-Wine is feasible in
-  principle and is the natural next test to add.
 - **The Android APK is never compiled in CI.** The network-contract
   logic layer (exact production `Models.kt`/`DaemonApi.kt`) runs under
   plain gradle, but the full Compose app needs the Android SDK, which

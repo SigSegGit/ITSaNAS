@@ -73,6 +73,17 @@ if [ "$FULL" -eq 1 ]; then
     else
         echo "==> skipping windows tests: mingw-w64 and/or wine not found" >&2
     fi
+
+    # The 64-bit itsanas-*.exe binaries need Wine's win64 loader, shipped
+    # by the separate `wine64` package (Ubuntu's plain `wine` builds a
+    # 32-bit-only prefix by default and fails the 64-bit installer with
+    # "Bad EXE format" — found running this the first time).
+    if command -v makensis >/dev/null 2>&1 && [ -x /usr/lib/wine/wine64 ]; then
+        echo "==> windows installer: silent-install under wine, verify layout + boot"
+        ./scripts/test-windows-installer.sh
+    else
+        echo "==> skipping windows installer test: makensis and/or wine64 not found" >&2
+    fi
 fi
 
 echo "==> all checks passed"

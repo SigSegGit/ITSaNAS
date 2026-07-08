@@ -36,10 +36,18 @@ jobs:
       # refuses read-only handles). Run the fs-heavy crates' tests as
       # real Windows binaries under Wine so that class of regression
       # fails CI instead of shipping.
-      - name: Install mingw-w64 and wine
+      # wine64 (distinct from the base `wine` package) is required for
+      # the win64 loader the 64-bit itsanas-*.exe binaries need — Ubuntu's
+      # plain `wine` package creates a 32-bit-only prefix from scratch,
+      # which fails a 64-bit executable with "Bad EXE format". wine32:i386
+      # is required the other way around: the NSIS installer itself is a
+      # 32-bit PE, which needs Wow64 (present once wine32 is installed
+      # alongside wine64). Both found the hard way testing this locally.
+      - name: Install mingw-w64, wine, nsis
         run: |
+          sudo dpkg --add-architecture i386
           sudo apt-get update
-          sudo apt-get install -y mingw-w64 wine
+          sudo apt-get install -y mingw-w64 wine wine32:i386 wine64 nsis
 
       - name: Run Windows tests under Wine
         run: ./scripts/test-windows.sh
@@ -51,3 +59,10 @@ jobs:
       # APIs) and this is the layer that exercises it end-to-end.
       - name: Run Windows e2e smoke test under Wine
         run: ./scripts/smoke-e2e-windows.sh
+
+      # One level higher still: prove the thing a user actually downloads
+      # and double-clicks works, not just the binary inside it. Silently
+      # installs the real NSIS installer under Wine and checks the result
+      # boots and answers HTTP.
+      - name: Run Windows installer test under Wine
+        run: ./scripts/test-windows-installer.sh
