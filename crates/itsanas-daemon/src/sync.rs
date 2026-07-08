@@ -28,7 +28,7 @@ use itsanas_crypto::cipher;
 use notify::{RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
 
-use crate::state::SharedState;
+use crate::state::{SharedState, SyncIssue};
 
 const STATE_FILE: &str = "sync_state.enc";
 const STATE_AAD: &[u8] = b"itsanas-sync-state-v1";
@@ -106,15 +106,28 @@ pub async fn run(state: SharedState, sync_dir: PathBuf) {
 
 async fn reconcile(state: &SharedState, master_key: &[u8; 32], sync_dir: &Path, state_path: &Path) {
     let mut sync_state = SyncState::load(state_path, master_key);
+    let mut issues: Vec<SyncIssue> = Vec::new();
 
     let vault_files: BTreeSet<String> = match state.vault.list(master_key) {
         Ok(files) => files.into_iter().map(|f| f.name).collect(),
         Err(e) => {
             eprintln!("sync: failed to list vault: {e}");
+            issues.push(SyncIssue {
+                name: "(entire vault)".to_string(),
+                message: format!("could not list vault contents: {e}"),
+            });
+            state.set_sync_issues(issues).await;
             return;
         }
     };
-    let folder_files = list_folder(sync_dir);
+    let (folder_files, unreadable) = list_folder(sync_dir);
+    for name in &unreadable {
+        eprintln!("sync: skipping a folder entry whose name isn't valid UTF-8: {name}");
+        issues.push(SyncIssue {
+            name: name.clone(),
+            message: "file name isn't valid UTF-8 and can't be synced".to_string(),
+        });
+    }
 
     let mut names: BTreeSet<String> = vault_files.clone();
     names.extend(folder_files.iter().cloned());
@@ -139,6 +152,10 @@ async fn reconcile(state: &SharedState, master_key: &[u8; 32], sync_dir: &Path, 
                     // folder by the user -> delete from the vault too.
                     if let Err(e) = state.vault.delete(master_key, &name) {
                         eprintln!("sync: failed to delete {name} from vault: {e}");
+                        issues.push(SyncIssue {
+                            name: name.clone(),
+                            message: format!("could not delete from vault: {e}"),
+                        });
                         continue;
                     }
                     sync_state.last_synced.remove(&name);
@@ -146,6 +163,11 @@ async fn reconcile(state: &SharedState, master_key: &[u8; 32], sync_dir: &Path, 
                 } else if materialize(state, master_key, &name, &local_path, &mut sync_state).await
                 {
                     changed = true;
+                } else {
+                    issues.push(SyncIssue {
+                        name: name.clone(),
+                        message: "could not write this file into the synced folder".to_string(),
+                    });
                 }
             }
             (false, true) => {
@@ -157,6 +179,11 @@ async fn reconcile(state: &SharedState, master_key: &[u8; 32], sync_dir: &Path, 
                     changed = true;
                 } else if upload(state, master_key, &name, &local_path, &mut sync_state).await {
                     changed = true;
+                } else {
+                    issues.push(SyncIssue {
+                        name: name.clone(),
+                        message: "could not upload this file to the vault".to_string(),
+                    });
                 }
             }
             (true, true) => {
@@ -175,7 +202,13 @@ async fn reconcile(state: &SharedState, master_key: &[u8; 32], sync_dir: &Path, 
                                 changed = true;
                             }
                         }
-                        Err(e) => eprintln!("sync: failed to read {name} from vault: {e}"),
+                        Err(e) => {
+                            eprintln!("sync: failed to read {name} from vault: {e}");
+                            issues.push(SyncIssue {
+                                name: name.clone(),
+                                message: format!("could not read from vault: {e}"),
+                            });
+                        }
                     }
                 } else if let (Some(data), Some(h)) = (local_data, local_hash) {
                     // Folder side changed (a local conflict, if the vault
@@ -183,6 +216,10 @@ async fn reconcile(state: &SharedState, master_key: &[u8; 32], sync_dir: &Path, 
                     // it should behave like a normal editable folder).
                     if let Err(e) = state.vault.put(master_key, &name, &data) {
                         eprintln!("sync: failed to upload {name}: {e}");
+                        issues.push(SyncIssue {
+                            name: name.clone(),
+                            message: format!("could not upload local change: {e}"),
+                        });
                     } else {
                         sync_state.last_synced.insert(name, h);
                         changed = true;
@@ -192,6 +229,7 @@ async fn reconcile(state: &SharedState, master_key: &[u8; 32], sync_dir: &Path, 
         }
     }
 
+    state.set_sync_issues(issues).await;
     if changed {
         sync_state.save(state_path, master_key);
     }
@@ -246,18 +284,27 @@ async fn upload(
     }
 }
 
-fn list_folder(dir: &Path) -> BTreeSet<String> {
+/// Returns the syncable file names in `dir`, plus a lossy rendering of
+/// each entry whose real name isn't valid UTF-8 (and so can't be synced —
+/// the vault's manifest and this engine's state file are both UTF-8).
+/// Previously such entries were dropped with no error at all, which looks
+/// identical to a healthy sync from the outside — silent forever.
+fn list_folder(dir: &Path) -> (BTreeSet<String>, Vec<String>) {
     let mut out = BTreeSet::new();
+    let mut unreadable = Vec::new();
     if let Ok(entries) = std::fs::read_dir(dir) {
         for entry in entries.flatten() {
             if entry.path().is_file() {
-                if let Some(name) = entry.file_name().to_str() {
-                    if !name.starts_with('.') {
+                let file_name = entry.file_name();
+                match file_name.to_str() {
+                    Some(name) if !name.starts_with('.') => {
                         out.insert(name.to_string());
                     }
+                    Some(_) => {}
+                    None => unreadable.push(file_name.to_string_lossy().into_owned()),
                 }
             }
         }
     }
-    out
+    (out, unreadable)
 }

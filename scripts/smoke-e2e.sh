@@ -250,6 +250,54 @@ until [ -f "$DIR_A/synced/from-api.txt" ]; do
 done
 [ -f "$DIR_A/synced/from-api.txt" ] && pass "a file PUT via the API materializes in the synced folder"
 
+echo "==> non-ASCII file names survive every path (accents, spaces, unicode)"
+# The owner's machine runs French Windows; names like these are the
+# normal case there, not the edge case. Cover both directions:
+# folder-drop (OsString -> manifest) and API (percent-encoded UTF-8).
+UNI_FOLDER='déjà vu — résumé.txt'
+UNI_API='été à Noël.txt'
+echo "contenu accentué: àéîôùç" >"$DIR_A/synced/$UNI_FOLDER"
+wait_until "http://127.0.0.1:$PORT_A/files" \
+    "[.[] | .name] | contains([\"$UNI_FOLDER\"])" \
+    "an accented file dropped in the synced folder appears in the vault under its exact name"
+uni_api_enc=$(jq -rn --arg s "$UNI_API" '$s|@uri')
+code=$(curl -s -o /dev/null -w '%{http_code}' -X PUT \
+    "http://127.0.0.1:$PORT_A/files/$uni_api_enc" --data-binary 'saison des fêtes')
+assert_eq "$code" "201" "an accented file name uploads via the API (percent-encoded UTF-8)"
+waited=0
+until [ -f "$DIR_A/synced/$UNI_API" ]; do
+    sleep 0.3
+    waited=$((waited + 1))
+    if [ "$waited" -gt 30 ]; then
+        fail "the accented API upload materializes in the synced folder under its exact name (timed out)"
+        break
+    fi
+done
+[ -f "$DIR_A/synced/$UNI_API" ] && pass "the accented API upload materializes in the synced folder under its exact name"
+downloaded=$(curl -s "http://127.0.0.1:$PORT_A/files/$uni_api_enc")
+assert_eq "$downloaded" "saison des fêtes" "the accented file round-trips its content through the API"
+rm -f "$DIR_A/synced/$UNI_FOLDER"
+wait_until "http://127.0.0.1:$PORT_A/files" \
+    "[.[] | .name] | contains([\"$UNI_FOLDER\"]) | not" \
+    "deleting the accented file from the folder removes it from the vault"
+
+# Native-only: a Linux path is an arbitrary byte string, so an invalid
+# UTF-8 name is constructible here to exercise the "sync engine can't
+# read this name" reporting path (see itsanas-daemon's list_folder).
+# Skipped when DAEMON_CMD targets Wine/Windows: Wine's Unix-path-to-
+# UTF-16 translation sanitizes an invalid byte into U+FFFD rather than
+# preserving the invalid state, so the same input can't reproduce this
+# scenario there — it just becomes an ordinary, syncable name. The code
+# path itself has no OS-specific logic, so native coverage is sufficient.
+if [ -z "${DAEMON_CMD:-}" ]; then
+    echo "==> a file name that isn't valid UTF-8 is reported, not silently dropped"
+    printf 'unreadable name test' >"$DIR_A/synced/$(printf 'bad-\xff-name.txt')"
+    wait_until "http://127.0.0.1:$PORT_A/status" \
+        '[.sync_issues[].name] | any(contains("bad-") and contains("name.txt"))' \
+        "a non-UTF-8 file name is reported in /status instead of disappearing silently"
+    find "$DIR_A/synced" -name 'bad-*' -delete
+fi
+
 echo "==> folder sync: deletes propagate both directions"
 rm -f "$DIR_A/synced/from-folder.txt"
 wait_until "http://127.0.0.1:$PORT_A/files" '[.[] | .name] | contains(["from-folder.txt"]) | not' \

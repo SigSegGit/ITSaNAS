@@ -19,6 +19,16 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 TARGET="x86_64-pc-windows-gnu"
 rustup target add "${TARGET}"
 
+# Wine translates Unix filesystem paths to/from Windows UTF-16 using the
+# process locale's charset. Under a non-UTF-8 locale that translation
+# silently mangles non-ASCII names — this is what turned "an accented
+# file in the synced folder" into a mystery failure the first time this
+# suite ran here, purely because the container's default locale is
+# POSIX/C, not because of any bug in the daemon. Force UTF-8 so this
+# suite's result reflects the code, not the host's env.
+export LANG=C.UTF-8
+export LC_ALL=C.UTF-8
+
 # Release, not debug: (a) it's the same profile the shipped installer
 # binary is built with, so it's the thing actually worth testing, and
 # (b) debug windows-gnu builds of the iroh-relay dependency fail to link

@@ -26,6 +26,16 @@ rustup target add "${TARGET}"
 # isn't interleaved with wineboot noise.
 wineboot --init >/dev/null 2>&1 || true
 
+# Wine translates Unix filesystem paths to/from Windows UTF-16 using the
+# process locale's charset. Under a non-UTF-8 locale (e.g. the bare "C"/
+# "POSIX" locale some minimal containers default to) that translation
+# silently mangles any non-ASCII byte sequence, which looks exactly like
+# a product bug in anything that lists a directory — found the hard way
+# testing accented file names under this exact setup. Force a UTF-8
+# locale so results here depend on the code, not the host's env.
+export LANG=C.UTF-8
+export LC_ALL=C.UTF-8
+
 export CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUNNER=wine
 cargo test --target "${TARGET}" \
     -p itsanas-storage \

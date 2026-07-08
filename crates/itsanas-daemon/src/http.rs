@@ -11,7 +11,7 @@ use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 
 use crate::error::DaemonError;
-use crate::state::SharedState;
+use crate::state::{SharedState, SyncIssue};
 use crate::vault::VaultHealth;
 
 pub fn router(state: SharedState) -> Router {
@@ -42,6 +42,9 @@ struct StatusResponse {
     /// The most recent background scrub result (D7), if one has run yet.
     /// Always `null` while locked — a locked vault reveals nothing.
     vault_health: Option<VaultHealth>,
+    /// Files the sync engine couldn't reconcile on its most recent pass.
+    /// Always empty while locked, same rationale as `vault_health`.
+    sync_issues: Vec<SyncIssue>,
 }
 
 async fn status(State(state): State<SharedState>) -> impl IntoResponse {
@@ -50,6 +53,7 @@ async fn status(State(state): State<SharedState>) -> impl IntoResponse {
         unlocked: state.is_unlocked().await,
         synced_folder: state.sync_dir.display().to_string(),
         vault_health: state.vault_health().await,
+        sync_issues: state.sync_issues().await,
     })
 }
 

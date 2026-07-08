@@ -1,11 +1,26 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use serde::Serialize;
 use tokio::sync::RwLock;
 
 use crate::account;
 use crate::error::DaemonError;
 use crate::vault::{Vault, VaultHealth};
+
+/// A single file the sync engine could not reconcile on its most recent
+/// pass — e.g. its name couldn't be read from the synced folder, or the
+/// vault rejected it. Surfaced through `/status` so a stuck file shows up
+/// in the GUI instead of retrying invisibly forever (that silent-retry
+/// shape is exactly how the Windows os-error-5 shard-write bug went
+/// unnoticed: the daemon logged nothing a user would ever see).
+#[derive(Serialize, Clone)]
+pub struct SyncIssue {
+    /// The best available name for the affected file. Falls back to a
+    /// lossy rendering when the real name isn't valid UTF-8.
+    pub name: String,
+    pub message: String,
+}
 
 /// Shared server state: the vault, and the master key while unlocked.
 ///
@@ -24,6 +39,10 @@ pub struct AppState {
     /// vault is locked — a locked vault reveals nothing, including
     /// whether any of its files are healthy.
     vault_health: RwLock<Option<VaultHealth>>,
+    /// Files the sync engine failed to reconcile on its most recent pass.
+    /// Replaced wholesale each pass (see `sync::reconcile`), so a file
+    /// that starts working again drops off automatically.
+    sync_issues: RwLock<Vec<SyncIssue>>,
 }
 
 pub type SharedState = Arc<AppState>;
@@ -37,6 +56,7 @@ impl AppState {
             vault,
             master_key: RwLock::new(None),
             vault_health: RwLock::new(None),
+            sync_issues: RwLock::new(Vec::new()),
         })
     }
 
@@ -59,8 +79,10 @@ impl AppState {
     pub async fn lock(&self) {
         *self.master_key.write().await = None;
         // A locked vault reveals nothing — including whether its files
-        // were healthy as of the last scrub.
+        // were healthy as of the last scrub, or which ones the sync
+        // engine was struggling with.
         *self.vault_health.write().await = None;
+        self.sync_issues.write().await.clear();
     }
 
     pub async fn is_unlocked(&self) -> bool {
@@ -77,5 +99,13 @@ impl AppState {
 
     pub async fn set_vault_health(&self, health: VaultHealth) {
         *self.vault_health.write().await = Some(health);
+    }
+
+    pub async fn sync_issues(&self) -> Vec<SyncIssue> {
+        self.sync_issues.read().await.clone()
+    }
+
+    pub async fn set_sync_issues(&self, issues: Vec<SyncIssue>) {
+        *self.sync_issues.write().await = issues;
     }
 }

@@ -449,6 +449,46 @@ display, NSIS installer never executed, Android APK not compiled in
 CI, aarch64 binaries never run, real-internet NAT paths) is either
 tested or written down; removing an entry requires adding the test.
 
+## Overnight autonomous session: Unicode file names + silent-sync-failure fix
+
+Working unsupervised overnight per the owner's instruction, extended the
+Windows e2e coverage to non-ASCII file names (French accents, spaces, em
+dashes — the owner's own machine is French-locale Windows, so these are
+the *normal* case, not an edge case) on both the folder-drop and API
+upload paths, then ran that against the real Windows daemon under Wine.
+
+That surfaced a real defect, unrelated to the accent handling itself:
+`itsanas-daemon`'s folder-sync engine (`sync.rs::list_folder`) silently
+dropped any file whose name failed `OsStr::to_str()` — no log line, no
+error, nothing. The file would simply never sync, forever, with zero
+indication to the user that anything was wrong — structurally the same
+failure shape as the os-error-5 bug from earlier tonight (a real problem
+hiding behind an interface that reports "healthy"). Fixed by tracking
+these as `SyncIssue`s (name + reason), threading them through
+`AppState` → `/status` → `itsanas-gui`, which now shows a red banner
+for any file the sync engine can't currently handle. `itsanas-storage`'s
+`reconcile()` was also tightened to report (not just `eprintln!`) vault
+read/write/delete failures per file the same way, so a struggling file
+is visible in the GUI instead of only in a log nobody's watching.
+
+Two false leads chased down and correctly ruled *not* real bugs, worth
+recording so they aren't rediscovered from scratch: (1) accented file
+names first appeared broken under Wine, but only because the test
+container's default locale is POSIX/C — Wine's Unix-path-to-UTF-16
+translation depends on the process locale, and under a non-UTF-8 locale
+it mangles multibyte names. Real Windows/NTFS stores names as UTF-16
+natively and has no equivalent failure mode. Fixed by forcing
+`LC_ALL=C.UTF-8` in `test-windows.sh` and `smoke-e2e-windows.sh`, so
+Wine test results depend on the code, not the host's env. (2) A test
+constructing a literally-invalid-UTF-8 filename (only possible on Linux,
+where paths are raw bytes) to exercise the new `SyncIssue` reporting
+passes natively but can't be reproduced under Wine, because Wine's
+Unix→UTF-16 conversion replaces an invalid byte with U+FFFD rather than
+preserving the invalid state — the input silently becomes a different,
+valid name instead of reproducing the scenario. That assertion is now
+native-only with a comment explaining why, rather than a flaky Wine
+assertion or a deleted test.
+
 ## Next steps
 
 1. M2 (PR #5) and daemon/GUI/installer/Android/M3/test-automation (PR #6)

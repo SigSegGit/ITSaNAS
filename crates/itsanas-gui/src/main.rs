@@ -25,12 +25,20 @@ struct Status {
     synced_folder: String,
     #[serde(default)]
     vault_health: Option<VaultHealth>,
+    #[serde(default)]
+    sync_issues: Vec<SyncIssue>,
 }
 
 #[derive(Deserialize, Default, Clone, PartialEq, Debug)]
 struct VaultHealth {
     healthy_shards: u64,
     unhealthy_files: Vec<String>,
+}
+
+#[derive(Deserialize, Clone, PartialEq, Debug)]
+struct SyncIssue {
+    name: String,
+    message: String,
 }
 
 #[derive(Deserialize, Clone, PartialEq, Debug)]
@@ -215,6 +223,20 @@ impl App {
                 );
                 ui.add_space(8.0);
             }
+        }
+
+        if !status.sync_issues.is_empty() {
+            ui.colored_label(
+                egui::Color32::from_rgb(200, 60, 60),
+                format!("{} file(s) failed to sync:", status.sync_issues.len()),
+            );
+            for issue in &status.sync_issues {
+                ui.colored_label(
+                    egui::Color32::from_rgb(200, 60, 60),
+                    format!("  {} — {}", issue.name, issue.message),
+                );
+            }
+            ui.add_space(8.0);
         }
 
         if self.last_files_poll.elapsed() >= FILES_POLL_INTERVAL {
